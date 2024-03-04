@@ -17,6 +17,7 @@ statement -> assigment_statement
             | continue_statement
             | if_statement
             | dimension_statement
+            | do_statement
 assigment_statement -> identifier '=' arithmetic_expression | identifier '(' expression_list ')' '=' arithmetic_expression
 read_statement -> READ  format_identifier ',' identifier_list
 print_statement -> PRINT format_identifier ',' expression_list
@@ -25,6 +26,8 @@ go_to_statement -> GOTO label
 continue_statement -> CONTINUE
 if_statement -> IF '(' artithmetic_expression ')' label ',' label ',' label
 dimension_statement -> DIMENSION array_declaration_list
+do_statement -> DO label identifier '=' number_list
+nubmer_list -> number ',' number ',' number | number ',' number
 expression_list -> arithmetic_expression | arithmetic_expression ',' expression_list
 arithmetic_expression -> term | arithmetic_expression '+' term | arithmetic_expression '-' term
 term -> exponentiation | term '*' exponentiation | term '\' exponentiation

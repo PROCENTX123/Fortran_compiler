@@ -219,6 +219,10 @@ class LexicalAnalyzer:
                         coords = Coords(Position(self.row, self.col + self.i), Position(self.row, j))
                         yield Token(DomainTag.Identifier, coords, "end")
                         self.i += 3
+                    elif line[self.i:].lower().startswith("do"):
+                        coords = Coords(Position(self.row, self.col + self.i), Position(self.row, j))
+                        yield Token(DomainTag.Identifier, coords, "do")
+                        self.i += 2
                     else:
                         j = self.i + 1
                         while j < len(line) and line[j].isalnum():

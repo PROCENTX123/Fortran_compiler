@@ -1,3 +1,5 @@
       Program DEMo
-      Dimension B(10.2)
+
+      Do 10 I = 1, 10
+
       End

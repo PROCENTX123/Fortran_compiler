@@ -33,6 +33,8 @@ class Statement(Node):
                 return ContinueStatement.parse(lex)
             elif current_token.attrib == "if":
                 return IfStatement.parse(lex)
+            elif current_token.attrib == "do":
+                return DoStatement.parse(lex)
             elif current_token.attrib == "dimension":
                 return DimensionStatement.parse(lex)
             else:
@@ -376,6 +378,48 @@ class FormatStatement(Node):
     def check(self, labels):
         pass
 
+
+@dataclass
+class NumberList(Node):
+    start_value: Number
+    end_value: Number
+    step: Number
+
+    @staticmethod
+    def parse(lex: lexer.LexicalAnalyzer):
+        start_value = Number.parse(lex)
+        comma_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Comma, None, None))
+        end_value = Number.parse(lex)
+        tok = lex.current_token()
+        if tok.tag == Domaintag.DomainTag.Comma:
+            comma_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Comma, None, None))
+            step = Number.parse(lex)
+        else:
+            step = Number(None, 1)
+        return NumberList(start_value.pos, start_value, end_value, step)
+
+    def check(self):
+        pass
+
+
+
+@dataclass
+class DoStatement(Node):
+    label: Label
+    index: Identifier
+    values: NumberList
+
+    @staticmethod
+    def parse(lex: lexer.LexicalAnalyzer):
+        do_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, None, "do"))
+        label = Label.parse(lex)
+        index = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, None, None))
+        eq_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Assign, None, None))
+        values = NumberList.parse(lex)
+        return DoStatement(do_kw.coords.start.position(), label, index, values)
+
+    def check(self, labels):
+        pass
 
 @dataclass
 class GotoStatement(Node):
