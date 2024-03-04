@@ -1,0 +1,33 @@
+      PROGRAM DEMO
+      DIMENSION A(10), B(10)
+
+
+100   FORMAT (I5)
+101   FORMAT (2F10.2)
+102   FORMAT (E10.3)
+103   FORMAT (10X, 5HHello, I6)
+
+
+
+
+      I = 5
+      J = 10
+      K = I + J
+10    CONTINUE
+
+      Ka5ra = 2.0
+      Y = Ka5ra ** 3
+      Z = (Ka5ra + Y) / K
+
+
+      READ 100, I, J
+      PRINT 101, Z
+      IF ((K - 10) * 2) 20, 30, 40
+
+20    GOTO 50
+30    CONTINUE
+40    Y = Y + 2.e-3
+      GOTO 50
+
+50    PRINT 100, c + d
+      END
