@@ -1,5 +1,12 @@
       Program DEMo
 
-      Do 10 I = 1, 10
+      do6i = 100
+      do5i = +10,do6i, 1.e-2
+      do7i(do6i)
+      do5i = 10.30
+
+
+      a=do5i
+
 
       End

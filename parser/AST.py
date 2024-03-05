@@ -39,8 +39,10 @@ class Statement(Node):
                 return DimensionStatement.parse(lex)
             else:
                 return AssignmentStatement.parse(lex)
+
         except Exception as ex:
             try:
+
                 lex.token_idx = index
                 return AssignmentStatement.parse(lex)
             except:
@@ -66,11 +68,15 @@ class Number(Node):
     @staticmethod
     def parse(lex: lexer.LexicalAnalyzer):
         tok = lex.next_token()
-        value = None
+        value = 1
+        #возможно нужно еще добавить addition_operator
+        if tok.tag == Domaintag.DomainTag.Subtraction_operator or tok.tag == Domaintag.DomainTag.Addition_operator:
+            value = -1 if tok.tag == Domaintag.DomainTag.Subtraction_operator else 1
+            tok = lex.next_token()
         if tok.tag == Domaintag.DomainTag.Integer or tok.tag == Domaintag.DomainTag.Multiplier:
-            value = int(tok.attrib)
+            value *= int(tok.attrib)
         elif tok.tag == Domaintag.DomainTag.Real:
-            value = float(tok.attrib)
+            value *= float(tok.attrib)
         else:
             raise RuntimeError()
         return Number(tok.coords.start.position(), value)
@@ -187,6 +193,7 @@ class Program(Node):
 
     @staticmethod
     def parse(lex: lexer.LexicalAnalyzer):
+
         kw_program = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, None, None))
         identifier = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, None, None))
         statements = StatementList.parse(lex)
@@ -490,6 +497,13 @@ class ArrayDeclaration(Node):
     def check(self, labels):
         self.identifier.check(labels)
 
+        #пока не нужно отлетит на парсинге в runtime
+        # if not isinstance(self.size, Number):
+        #     raise TypeError(f"Размер массива {self.identifier.name} должен быть числом")
+
+        if not (isinstance(self.size.value, int) and self.size.value >= 0):
+            raise ValueError(f"Размер массива {self.identifier.name} должен быть целым числом без знака, получено: {self.size.value}")
+
 
 @dataclass
 class ArrayDeclarationList(Node):
@@ -534,12 +548,14 @@ class Term(Node):
     def parse(lex: lexer.LexicalAnalyzer):
         exponential = Exponentiation.parse(lex)
         current_token = lex.current_token()
-        if (current_token.tag == Domaintag.DomainTag.Multiplication_operator or
-                current_token.tag == Domaintag.DomainTag.Division_operator):
-            op = lex.next_token().attrib
-            rhs = Term.parse(lex)
-            return Term(exponential.pos, exponential, op, rhs)
-        return exponential
+        result = None
+        while (current_token.tag == Domaintag.DomainTag.Multiplication_operator or
+               current_token.tag == Domaintag.DomainTag.Division_operator):
+            op = lex.next_token()
+            rhs = Exponentiation.parse(lex)
+            result = Term(op.coords.start.position(), result if result else exponential, op.attrib, rhs)
+            current_token = lex.current_token()
+        return result if result else exponential
 
     def check(self, labels):
         self.left.check(labels)
@@ -564,7 +580,7 @@ class Factor(Node):
     @staticmethod
     def parse(lex: lexer.LexicalAnalyzer):
         tok = lex.current_token()
-        if tok.tag == Domaintag.DomainTag.Real or tok.tag == Domaintag.DomainTag.Integer or tok.tag == Domaintag.DomainTag.Multiplier:
+        if tok.tag == Domaintag.DomainTag.Real or tok.tag == Domaintag.DomainTag.Integer or tok.tag == Domaintag.DomainTag.Multiplier or tok.tag == Domaintag.DomainTag.Subtraction_operator or tok.tag == Domaintag.DomainTag.Addition_operator:
             return Number.parse(lex)
         elif tok.tag == Domaintag.DomainTag.Lbracket:
             tok = lex.next_token()

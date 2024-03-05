@@ -61,7 +61,7 @@ class LexicalAnalyzer:
 
 
                 # Обработка Format
-                if line[self.i:self.i + 6].lower().startswith('format'):
+                elif line[self.i:self.i + 6].lower().startswith('format'):
                     identifier = line[self.i: self.i + 6]
                     j = self.i + 6
                     coords = Coords(Position(self.row, self.col + self.i), Position(self.row, j))
@@ -161,8 +161,12 @@ class LexicalAnalyzer:
                     self.i = j
 
                 ##Обработка чисел и меток
-                elif line[self.i].isdigit():
+                elif line[self.i].isdigit() or (line[self.i] == '-' and self.i + 1 < len(line) and line[self.i + 1].isdigit()) or (line[self.i] == '.' and self.i + 1 < len(line) and line[self.i + 1].isdigit()) :
                     j = self.i
+                    if line[j] == '-':
+                        j += 1
+                    elif line[j] == '.':
+                        j += 1
                     while j < len(line) and line[j].isdigit():
                         j += 1
                     if j < len(line) and line[j] == '.':
@@ -244,6 +248,10 @@ class LexicalAnalyzer:
                         yield Token(DomainTag.Error, Coords(Position(self.row, self.i + 1), Position(self.row, j)))
                     self.i = j
             self.row += 1
+
+    # def gluing_tokens(self):
+    #     while self.__tokens != (Token(DomainTag.Rbracket) or Token(DomainTag.Assign)):
+
 
     def next_token(self):
         result = self.tokens()[self.token_idx]
