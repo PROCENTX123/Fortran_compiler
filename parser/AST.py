@@ -69,7 +69,6 @@ class Number(Node):
     def parse(lex: lexer.LexicalAnalyzer):
         tok = lex.next_token()
         value = 1
-        #возможно нужно еще добавить addition_operator
         if tok.tag == Domaintag.DomainTag.Subtraction_operator or tok.tag == Domaintag.DomainTag.Addition_operator:
             value = -1 if tok.tag == Domaintag.DomainTag.Subtraction_operator else 1
             tok = lex.next_token()
