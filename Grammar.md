@@ -26,8 +26,12 @@ go_to_statement -> GOTO label
 continue_statement -> CONTINUE
 if_statement -> IF '(' artithmetic_expression ')' label ',' label ',' label
 dimension_statement -> DIMENSION array_declaration_list
-do_statement -> DO label identifier '=' number_list
-nubmer_list -> number ',' number ',' number | number ',' number
+
+do_statement -> DO do_label identifier '=' number_list nested_operators end_do_operator
+nubmer_list -> (number|identifier) ',' (number|identifier) ',' (number|identifier) | (number|identifier) ',' (number|identifier)
+nested_operators -> statement | statement statement_list
+end_do_operator -> do_label statement
+
 expression_list -> arithmetic_expression | arithmetic_expression ',' expression_list
 arithmetic_expression -> term | arithmetic_expression '+' term | arithmetic_expression '-' term
 term -> exponentiation | term '*' exponentiation | term '\' exponentiation
@@ -49,6 +53,7 @@ identifier_list -> identifier | identifier ',' identifier_list
 array_declaration_list -> array_declaration | array_declaration ',' array_declaration_list
 array_declaration -> identifier '(' INTEGER ')'
 number -> INTEGER | REAL
+do_label -> label
 
 identifier -> STRING
 format_identifier -> label
