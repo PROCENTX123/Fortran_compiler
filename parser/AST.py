@@ -5,9 +5,9 @@ from lexer import Domaintag
 from lexer.errors import *
 
 
+
 @dataclass
 class Node:
-    pos: pe.Position
 
     @staticmethod
     def parse(lex: lexer.LexicalAnalyzer):
@@ -17,34 +17,42 @@ class Node:
 class Statement(Node):
 
     @staticmethod
-    def parse(lex: lexer.LexicalAnalyzer):
-        current_token = lex.expect(lex.current_token(), lexer.Token(Domaintag.DomainTag.Identifier, None, None))
+    def parse(tuples: list):
+        lex = lexer.LexicalAnalyzer(tuples[0])
+        lex.analyze_string(tuples[0][1])
+        tokens = lex.get_tokens()
+
+        current_token = tokens[0]
+        if current_token.tag != Domaintag.DomainTag.Identifier:
+            raise ValueError("Ожидается идентификатор вначале оператора")
+
         index = lex.token_idx
         try:
             if current_token.attrib == "read":
-                return ReadStatement.parse(lex)
+                return ReadStatement.parse(tuples)
             elif current_token.attrib == "print":
-                return PrintStatement.parse(lex)
+                return PrintStatement.parse(tuples)
             elif current_token.attrib == "format":
-                return FormatStatement.parse(lex)
+                return FormatStatement.parse(tuples)
             elif current_token.attrib == "goto":
-                return GotoStatement.parse(lex)
+                return GotoStatement.parse(tuples)
             elif current_token.attrib == "continue":
-                return ContinueStatement.parse(lex)
+                return ContinueStatement.parse(tuples)
             elif current_token.attrib == "if":
-                return IfStatement.parse(lex)
+                return IfStatement.parse(tuples)
             elif current_token.attrib == "do":
-                return DoStatement.parse(lex)
+                return DoStatement.parse(tuples)
             elif current_token.attrib == "dimension":
-                return DimensionStatement.parse(lex)
+                return DimensionStatement.parse(tuples)
             else:
-                return AssignmentStatement.parse(lex)
+                return AssignmentStatement.parse(tuples, lex)
 
         except Exception as ex:
             try:
+                lex.analyze_string(tuples[0][1], with_kw=False)
 
                 lex.token_idx = index
-                return AssignmentStatement.parse(lex)
+                return AssignmentStatement.parse(tuples, lex)
             except:
                 raise ex
 
@@ -58,7 +66,7 @@ class Identifier(Node):
 
     def check(self, labels):
         if len(self.name) > 6:
-            raise IdentifierNameLengthError(self.pos, self.name)
+            raise IdentifierNameLengthError(None, self.name)
 
 
 @dataclass
@@ -78,7 +86,7 @@ class Number(Node):
             value *= float(tok.attrib)
         else:
             raise RuntimeError()
-        return Number(tok.coords.start.position(), value)
+        return Number(value)
 
     def check(self, labels):
         pass
@@ -91,11 +99,11 @@ class Label(Node):
     @staticmethod
     def parse(lex: lexer.LexicalAnalyzer):
         result = Number.parse(lex)
-        return Label(result.pos, result)
+        return Label(result)
 
     def check(self, labels):
         if self.number.value not in labels:
-            raise LabelInexistantError(self.pos, self.number.value)
+            raise LabelInexistantError(None, self.number.value)
 
 
 class Expression(Node):
@@ -121,7 +129,7 @@ class ArithmeticExpression(Node):
                 current_token.tag == Domaintag.DomainTag.Subtraction_operator):
             op = lex.next_token()
             rhs = Term.parse(lex)
-            result = ArithmeticExpression(op.coords.start.position(), result if result else term, op.attrib, rhs)
+            result = ArithmeticExpression(result if result else term, op.attrib, rhs)
             current_token = lex.current_token()
         return result if result else term
     def check(self, labels):
@@ -141,7 +149,7 @@ class IdentifierList(Node):
             current_token = lex.next_token()
             identifiers.append(ArithmeticExpression.parse(lex))
             current_token = lex.current_token()
-        return IdentifierList(identifiers[0].pos, identifiers)
+        return IdentifierList(identifiers)
 
     def check(self, labels):
         for ident in self.identifiers:
@@ -160,7 +168,7 @@ class ExpressionList(Node):
             current_token = lex.next_token()
             expressions.append(ArithmeticExpression.parse(lex))
             current_token = lex.current_token()
-        return ExpressionList(expressions[0].pos, expressions)
+        return ExpressionList(expressions)
 
     def check(self, labels):
         for expr in self.expressions:
@@ -172,13 +180,22 @@ class StatementList(Node):
     statements: list[Statement]
 
     @staticmethod
-    def parse(lex: lexer.LexicalAnalyzer):
-        statements = [Statement.parse(lex)]
-        current_token = lex.current_token()
-        while current_token.attrib != "end":
-            statements.append(Statement.parse(lex))
-            current_token = lex.current_token()
-        return StatementList(statements[0].pos, statements)
+    def parse(tuples: list):
+        lex = lexer.LexicalAnalyzer(tuples[0])
+        lex.analyze_string(tuples[0][1])
+        tokens = lex.get_tokens()
+
+        statements = []
+
+        while tokens[0].attrib != 'end':
+            statements.append(Statement.parse(tuples))
+            lex.analyze_string(tuples[0][1])
+            tokens = lex.get_tokens()
+
+        if not statements:
+            raise ValueError("Программа не содержит ни одного оператора")
+
+        return StatementList(statements)
 
     def check(self, labels):
         for stmt in self.statements:
@@ -191,13 +208,27 @@ class Program(Node):
     statement_list: StatementList
 
     @staticmethod
-    def parse(lex: lexer.LexicalAnalyzer):
+    def parse(tuples: list):
+        lex = lexer.LexicalAnalyzer(tuples[0])
+        lex.analyze_string(tuples[0][1])
+        tokens = lex.get_tokens()
 
-        kw_program = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, None, None))
-        identifier = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, None, None))
-        statements = StatementList.parse(lex)
-        identifier = Identifier(identifier.coords.start.position(), identifier.attrib)
-        return Program(kw_program.coords.start.position(), identifier, statements)
+        if len(tokens) != 2:
+            raise ValueError("Неверное количество токенов для определения программы")
+
+        kw_program = tokens[0]
+        if not (kw_program.tag == Domaintag.DomainTag.Identifier and kw_program.attrib.lower() == "program"):
+            raise ValueError(f"Ожидается ключевое слово 'PROGRAM', получено '{kw_program.attrib}'")
+
+        identifier = tokens[1]
+        if identifier.tag != Domaintag.DomainTag.Identifier:
+            raise ValueError("Ожидается идентификатор после 'PROGRAM'")
+
+        identifier = Identifier(identifier.attrib)
+        tuples.pop(0)
+        statements = StatementList.parse(tuples)
+
+        return Program(identifier, statements)
 
     def check(self, labels: list):
         self.identifier.check(labels)
@@ -211,19 +242,22 @@ class AssignmentStatement(Node):
     index: ExpressionList | None
 
     @staticmethod
-    def parse(lex: lexer.LexicalAnalyzer):
-        identifier = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, None, None))
-        ident = Identifier(identifier.coords.start.position(), identifier.attrib)
+    def parse(tuples: list, lex: lexer.LexicalAnalyzer):
+
+        identifier = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, None))
+        ident = Identifier(identifier.attrib)
         tok = lex.next_token()
         if tok.tag == Domaintag.DomainTag.Assign:
             expression = ArithmeticExpression.parse(lex)
-            return AssignmentStatement(identifier.coords.start.position(), ident, expression, None)
+            tuples.pop(0)
+            return AssignmentStatement(ident, expression, None)
         elif tok.tag == Domaintag.DomainTag.Lbracket:
             expr_list = ExpressionList.parse(lex)
-            ccp_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Rbracket, None, None))
-            eq_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Assign, None, None))
+            ccp_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Rbracket, None))
+            eq_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Assign, None))
             expr = ArithmeticExpression.parse(lex)
-            return AssignmentStatement(identifier.coords.start.position(), ident, expr, expr_list)
+            tuples.pop(0)
+            return AssignmentStatement(ident, expr, expr_list)
         else:
             raise RuntimeError(f"{tok.coords}: expected token with tag - Assign | Lbracket, got - {tok.tag}")
 
@@ -237,12 +271,16 @@ class ReadStatement(Node):
     identifiers: IdentifierList
 
     @staticmethod
-    def parse(lex: lexer.LexicalAnalyzer):
-        read_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, None, "read"))
+    def parse(tuples: list):
+        lex = lexer.LexicalAnalyzer(tuples[0])
+        lex.analyze_string(tuples[0][1])
+        tokens = lex.get_tokens()
+        read_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, "read"))
         label = Label.parse(lex)
-        comma_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Comma, None, None))
+        comma_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Comma, None))
         identifiers = IdentifierList.parse(lex)
-        return ReadStatement(read_kw.coords.start.position(), label, identifiers)
+        tuples.pop(0)
+        return ReadStatement(label, identifiers)
 
     def check(self, labels):
         self.format_identifier.check(labels)
@@ -255,12 +293,16 @@ class PrintStatement(Node):
     identifiers: ExpressionList
 
     @staticmethod
-    def parse(lex: lexer.LexicalAnalyzer):
-        print_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, None, "print"))
+    def parse(tuples: list):
+        lex = lexer.LexicalAnalyzer(tuples[0])
+        lex.analyze_string(tuples[0][1])
+        tokens = lex.get_tokens()
+        print_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, "print"))
         label = Label.parse(lex)
-        comma_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Comma, None, None))
+        comma_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Comma, None))
         identifiers = ExpressionList.parse(lex)
-        return PrintStatement(print_kw.coords.start.position(), label, identifiers)
+        tuples.pop(0)
+        return PrintStatement(label, identifiers)
 
     def check(self, labels):
         self.format_identifier.check(labels)
@@ -274,12 +316,12 @@ class FormatItem(Node):
 
     @staticmethod
     def parse(lex: lexer.LexicalAnalyzer):
-        format_tok = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Format_specifier, None, None))
+        format_tok = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Format_specifier, None))
         format_attr = format_tok.attrib
         kind, details = None, None
         if "h" in format_attr:
             kind = 'h'
-            hstring = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.H_string, None, None))
+            hstring = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.H_string, None))
             details = (int(format_attr[:-1]), hstring.attrib)
         elif "x" in format_attr:
             kind = 'x'
@@ -297,7 +339,7 @@ class FormatItem(Node):
         elif "i" in format_attr:
             kind = 'i'
             details = (int(format_attr[1:]), None)
-        return FormatItem(format_tok.coords.start.position(), kind, details)
+        return FormatItem(kind, details)
 
 
 @dataclass
@@ -312,7 +354,7 @@ class FormatItemList(Node):
             current_token = lex.next_token()
             items.append(FormatItem.parse(lex))
             current_token = lex.current_token()
-        return StatementList(items[0].pos, items)
+        return StatementList(items)
 
 
 @dataclass
@@ -322,17 +364,17 @@ class RepeatedFormatGroup(Node):
 
     @staticmethod
     def parse(lex: lexer.LexicalAnalyzer):
-        count = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Multiplier, None, None))
-        count = Number(count.coords.start.position(), int(count.attrib))
+        count = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Multiplier, None))
+        count = Number(int(count.attrib))
         tok = lex.current_token()
         if tok.tag == Domaintag.DomainTag.Lbracket:
-            cop_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Lbracket, None, None))
+            cop_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Lbracket, None))
             items = FormatItemList.parse(lex)
-            ccp_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Rbracket, None, None))
-            return RepeatedFormatGroup(count.pos, count, items)
+            ccp_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Rbracket, None))
+            return RepeatedFormatGroup(count, items)
         elif tok.tag == Domaintag.DomainTag.Format_specifier:
             items = FormatItem.parse(lex)
-            return RepeatedFormatGroup(count.pos, count, items)
+            return RepeatedFormatGroup(count, items)
         else:
             raise RuntimeError()
 
@@ -356,7 +398,7 @@ class RepeatedFormatItem(Node):
                     items += tail.items
                 else:
                     items.append(tail.items)
-            return RepeatedFormatItem(items[0].pos, items)
+            return RepeatedFormatItem(items)
 
 
 @dataclass
@@ -365,10 +407,10 @@ class FormatList(Node):
 
     @staticmethod
     def parse(lex: lexer.LexicalAnalyzer):
-        cop_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Lbracket, None, None))
+        cop_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Lbracket, None))
         items = RepeatedFormatItem.parse(lex)
-        ccp_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Rbracket, None, None))
-        return FormatList(cop_kw.coords.start.position(), items)
+        ccp_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Rbracket, None))
+        return FormatList(items)
 
 
 @dataclass
@@ -376,10 +418,14 @@ class FormatStatement(Node):
     format_list: FormatList
 
     @staticmethod
-    def parse(lex: lexer.LexicalAnalyzer):
-        format_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, None, "format"))
+    def parse(tuples: list):
+        lex = lexer.LexicalAnalyzer(tuples[0])
+        lex.analyze_string(tuples[0][1])
+        tokens = lex.get_tokens()
+        format_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, "format"))
         format_list = FormatList.parse(lex)
-        return FormatStatement(format_kw.coords.start.position(), format_list)
+        tuples.pop(0)
+        return FormatStatement(format_list)
 
     def check(self, labels):
         pass
@@ -394,15 +440,15 @@ class NumberList(Node):
     @staticmethod
     def parse(lex: lexer.LexicalAnalyzer):
         start_value = Number.parse(lex)
-        comma_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Comma, None, None))
+        comma_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Comma, None))
         end_value = Number.parse(lex)
         tok = lex.current_token()
         if tok.tag == Domaintag.DomainTag.Comma:
-            comma_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Comma, None, None))
+            comma_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Comma, None))
             step = Number.parse(lex)
         else:
-            step = Number(None, 1)
-        return NumberList(start_value.pos, start_value, end_value, step)
+            step = Number(1)
+        return NumberList(start_value, end_value, step)
 
     def check(self):
         pass
@@ -416,13 +462,17 @@ class DoStatement(Node):
     values: NumberList
 
     @staticmethod
-    def parse(lex: lexer.LexicalAnalyzer):
-        do_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, None, "do"))
+    def parse(tuples: list):
+        lex = lexer.LexicalAnalyzer(tuples[0])
+        lex.analyze_string(tuples[0][1])
+        tokens = lex.get_tokens()
+        do_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, "do"))
         label = Label.parse(lex)
-        index = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, None, None))
-        eq_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Assign, None, None))
+        index = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, None))
+        eq_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Assign, None))
         values = NumberList.parse(lex)
-        return DoStatement(do_kw.coords.start.position(), label, index, values)
+        tuples.pop(0)
+        return DoStatement(label, index, values)
 
     def check(self, labels):
         pass
@@ -432,10 +482,14 @@ class GotoStatement(Node):
     label: Label
 
     @staticmethod
-    def parse(lex: lexer.LexicalAnalyzer):
-        goto_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, None, "goto"))
+    def parse(tuples: list):
+        lex = lexer.LexicalAnalyzer(tuples[0])
+        lex.analyze_string(tuples[0][1])
+        tokens = lex.get_tokens()
+        goto_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, "goto"))
         label = Label.parse(lex)
-        return GotoStatement(goto_kw.coords.start.position(), label)
+        tuples.pop(0)
+        return GotoStatement(label)
 
     def check(self, labels):
         self.label.check(labels)
@@ -445,9 +499,13 @@ class GotoStatement(Node):
 class ContinueStatement(Node):
 
     @staticmethod
-    def parse(lex: lexer.LexicalAnalyzer):
-        continue_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, None, "continue"))
-        return ContinueStatement(continue_kw.coords.start.position())
+    def parse(tuples: list):
+        lex = lexer.LexicalAnalyzer(tuples[0])
+        lex.analyze_string(tuples[0][1])
+        tokens = lex.get_tokens()
+        continue_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, "continue"))
+        tuples.pop(0)
+        return ContinueStatement()
 
     def check(self, labels):
         pass
@@ -461,17 +519,21 @@ class IfStatement(Node):
     next_label: Label
 
     @staticmethod
-    def parse(lex: lexer.LexicalAnalyzer):
-        if_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, None, "if"))
-        cop_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Lbracket, None, None))
+    def parse(tuples: list):
+        lex = lexer.LexicalAnalyzer(tuples[0])
+        lex.analyze_string(tuples[0][1])
+        tokens = lex.get_tokens()
+        if_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, "if"))
+        cop_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Lbracket, None))
         expression = ArithmeticExpression.parse(lex)
-        ccp_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Rbracket, None, None))
+        ccp_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Rbracket, None))
         true_label = Label.parse(lex)
-        comma_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Comma, None, None))
+        comma_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Comma, None))
         false_label = Label.parse(lex)
-        comma_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Comma, None, None))
+        comma_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Comma, None))
         next_label = Label.parse(lex)
-        return IfStatement(if_kw.coords.start.position(), expression, true_label, false_label, next_label)
+        tuples.pop(0)
+        return IfStatement(expression, true_label, false_label, next_label)
 
     def check(self, labels):
         self.true_label.check(labels)
@@ -486,12 +548,12 @@ class ArrayDeclaration(Node):
 
     @staticmethod
     def parse(lex: lexer.LexicalAnalyzer):
-        identifier = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, None, None))
-        cop_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Lbracket, None, None))
+        identifier = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, None))
+        cop_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Lbracket, None))
         size = Number.parse(lex)
-        ccp_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Rbracket, None, None))
-        ident = Identifier(identifier.coords.start.position(), identifier.attrib)
-        return ArrayDeclaration(identifier.coords.start.position(), ident, size)
+        ccp_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Rbracket, None))
+        ident = Identifier(identifier.attrib)
+        return ArrayDeclaration(ident, size)
 
     def check(self, labels):
         self.identifier.check(labels)
@@ -516,7 +578,7 @@ class ArrayDeclarationList(Node):
             current_token = lex.next_token()
             declarations.append(ArrayDeclaration.parse(lex))
             current_token = lex.current_token()
-        return ArrayDeclarationList(declarations[0].pos, declarations)
+        return ArrayDeclarationList(declarations)
 
     def check(self, labels):
         for decl in self.declarations:
@@ -528,10 +590,14 @@ class DimensionStatement(Node):
     array_declaration_list: ArrayDeclarationList
 
     @staticmethod
-    def parse(lex: lexer.LexicalAnalyzer):
-        dim_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, None, "dimension"))
+    def parse(tuples: list):
+        lex = lexer.LexicalAnalyzer(tuples[0])
+        lex.analyze_string(tuples[0][1])
+        tokens = lex.get_tokens()
+        dim_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, "dimension"))
         array_decl_list = ArrayDeclarationList.parse(lex)
-        return DimensionStatement(dim_kw.coords.start.position(), array_decl_list)
+        tuples.pop(0)
+        return DimensionStatement(array_decl_list)
 
     def check(self, labels):
         self.array_declaration_list.check(labels)
@@ -552,7 +618,7 @@ class Term(Node):
                current_token.tag == Domaintag.DomainTag.Division_operator):
             op = lex.next_token()
             rhs = Exponentiation.parse(lex)
-            result = Term(op.coords.start.position(), result if result else exponential, op.attrib, rhs)
+            result = Term(result if result else exponential, op.attrib, rhs)
             current_token = lex.current_token()
         return result if result else exponential
 
@@ -584,18 +650,18 @@ class Factor(Node):
         elif tok.tag == Domaintag.DomainTag.Lbracket:
             tok = lex.next_token()
             result = ArithmeticExpression.parse(lex)
-            ccp_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Rbracket, None, None))
+            ccp_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Rbracket, None))
             return result
         elif tok.tag == Domaintag.DomainTag.Identifier:
             identifier = lex.next_token()
             tok = lex.current_token()
             if tok.tag == Domaintag.DomainTag.Lbracket:
-                cop_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Lbracket, None, None))
+                cop_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Lbracket, None))
                 expr_list = ExpressionList.parse(lex)
-                ccp_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Lbracket, None, None))
-                return Call(identifier.coords.start.position(), identifier, expr_list)
+                ccp_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Lbracket, None))
+                return Call(identifier, expr_list)
             else:
-                return Identifier(identifier.coords.start.position(), identifier.attrib)
+                return Identifier(identifier.attrib)
         else:
             raise RuntimeError("")
 
@@ -615,7 +681,7 @@ class Exponentiation(Node):
         if current_token.tag == Domaintag.DomainTag.Exponentiation_operator:
             op = lex.next_token().attrib
             rhs = Exponentiation.parse(lex)
-            return Exponentiation(factor.pos, factor, rhs)
+            return Exponentiation(factor, rhs)
         return factor
 
     def check(self, labels):

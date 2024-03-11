@@ -30,4 +30,10 @@
       GOTO 50
 
 50    PRINT 100, c + d
+
+      K = I + J
+      DOi5 = 2 + 3
+
+      a = 1 + ( 5 + 2)
+
       END

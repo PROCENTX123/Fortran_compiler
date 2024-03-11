@@ -9,6 +9,8 @@ class DomainTag(Enum):
     Integer = 'Integer'
     Real = 'Real'
 
+    EOF = 'EOF'
+
     #дополнения к format
     Format_specifier = 'Format_specifier'
     Format_label = 'Format_label' #ищем это у read и print

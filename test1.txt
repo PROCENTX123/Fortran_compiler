@@ -1,11 +1,6 @@
       Program DEMo
 
-
-      do 5 i = 1, 10
-
-
-
-
-      do 5 i = 1, 10, 2
+      K = I + J
+      DOi5 = 2 + 3
 
       End

@@ -10,11 +10,7 @@ def make_lexer(namefile):
             unique_labels.append(tuple[0])
         # print(tuple)
 
-    analyzer = LexicalAnalyzer(pair_lable_operator)
-    tokens = analyzer.tokens()
+    # analyzer = LexicalAnalyzer(pair_lable_operator)
+    # tokens = analyzer.tokens()
 
-    # пример того как работает лексический анализатор
-    # for token in tokens:
-    #     print(token)
-
-    return tokens, unique_labels, analyzer
+    return unique_labels,  pair_lable_operator
