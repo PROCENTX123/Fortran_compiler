@@ -4,14 +4,10 @@
 
 
       do 5 i = 1, 10, 1
-20    continue
       do 3 j = 2, 100, 2
-30    continue
+10    goto 50
 3     goto 20
 5     goto 30
 
 
-
-
-
-      End
+      end

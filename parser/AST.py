@@ -4,7 +4,7 @@ from lexer import lexer
 from lexer import Domaintag
 from lexer.errors import *
 
-
+stack_do = []
 
 @dataclass
 class Node:
@@ -189,6 +189,8 @@ class StatementList(Node):
 
         while tokens[0].attrib != 'end':
             statements.append(Statement.parse(tuples))
+            if len(tuples) == 0:
+                raise ValueError("Отсутствует END")
             lex.analyze_string(tuples[0][1])
             tokens = lex.get_tokens()
 
@@ -474,11 +476,13 @@ class DoStatement(Node):
 
     @staticmethod
     def parse(tuples: list):
+        global stack_do
         lex = lexer.LexicalAnalyzer(tuples[0])
         lex.analyze_string(tuples[0][1])
         tokens = lex.get_tokens()
         do_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, "do"))
         do_label = Label.parse(lex)
+        stack_do.append(do_label.number.value)
         index = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, None))
         eq_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Assign, None))
         values = NumberList.parse(lex)
@@ -496,6 +500,7 @@ class NestedList(Node):
 
     @staticmethod
     def parse(tuples: list, do_label: int):
+        global stack_do
         lex = lexer.LexicalAnalyzer(tuples[0])
         lex.analyze_string(tuples[0][1])
         tokens = lex.get_tokens()
@@ -503,10 +508,17 @@ class NestedList(Node):
         statements = []
 
         while tuples[0][0] != do_label.number.value:
+            if lex.current_token().attrib == 'end':
+                raise ValueError("Незаконченный цикл DO")
+            if tuples[0][0] in stack_do and tuples[0][0] != do_label.number.value:
+                raise ValueError("Пересекающиеся циклы DO")
             statements.append(Statement.parse(tuples))
+            if len(tuples) == 0:
+                raise ValueError("Отсутствует END")
             lex.analyze_string(tuples[0][1])
             tokens = lex.get_tokens()
         end_do_operator = Statement.parse(tuples)
+        stack_do.pop(-1)
 
         return NestedList(statements, end_do_operator)
 

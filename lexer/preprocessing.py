@@ -43,8 +43,9 @@ def create_tuples_from_lines(filename):
                 raise FormatWithoutLabelError(pe.Position(0, idx, 1), text)
             if not ("format" in text and label):
                 text = text.replace(' ', '')
-            tuples_list.append((label, text))
-            defined_labels.append(label)
+            if len(text) > 0:
+                tuples_list.append((label, text))
+                defined_labels.append(label)
     return tuples_list
 
 
