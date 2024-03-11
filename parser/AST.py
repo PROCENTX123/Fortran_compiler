@@ -433,19 +433,28 @@ class FormatStatement(Node):
 
 @dataclass
 class NumberList(Node):
-    start_value: Number
-    end_value: Number
-    step: Number
+    start_value: (Number | Identifier)
+    end_value: (Number | Identifier)
+    step: (Number | Identifier)
 
     @staticmethod
     def parse(lex: lexer.LexicalAnalyzer):
-        start_value = Number.parse(lex)
+        if lex.current_token().tag == Domaintag.DomainTag.Real or lex.current_token().tag == Domaintag.DomainTag.Integer:
+            start_value = Number.parse(lex)
+        elif lex.current_token().tag == Domaintag.DomainTag.Identifier:
+            start_value = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, None))
         comma_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Comma, None))
-        end_value = Number.parse(lex)
+        if lex.current_token().tag == Domaintag.DomainTag.Real or lex.current_token().tag == Domaintag.DomainTag.Integer:
+            end_value = Number.parse(lex)
+        elif lex.current_token().tag == Domaintag.DomainTag.Identifier:
+            end_value = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, None))
         tok = lex.current_token()
         if tok.tag == Domaintag.DomainTag.Comma:
             comma_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Comma, None))
-            step = Number.parse(lex)
+            if lex.current_token().tag == Domaintag.DomainTag.Real or lex.current_token().tag == Domaintag.DomainTag.Integer:
+                step = Number.parse(lex)
+            elif lex.current_token().tag == Domaintag.DomainTag.Identifier:
+                step = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, None))
         else:
             step = Number(1)
         return NumberList(start_value, end_value, step)
@@ -457,9 +466,11 @@ class NumberList(Node):
 
 @dataclass
 class DoStatement(Node):
-    label: Label
+    do_label: Label
     index: Identifier
     values: NumberList
+    nested_operators: list[Statement]
+
 
     @staticmethod
     def parse(tuples: list):
@@ -467,15 +478,42 @@ class DoStatement(Node):
         lex.analyze_string(tuples[0][1])
         tokens = lex.get_tokens()
         do_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, "do"))
-        label = Label.parse(lex)
+        do_label = Label.parse(lex)
         index = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, None))
         eq_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Assign, None))
         values = NumberList.parse(lex)
         tuples.pop(0)
-        return DoStatement(label, index, values)
+        nested_operators = NestedList.parse(tuples, do_label)
+        return DoStatement(do_label, index, values, nested_operators)
 
     def check(self, labels):
         pass
+
+@dataclass
+class NestedList(Node):
+    statements: list[Statement]
+    end_do_operator: Statement
+
+    @staticmethod
+    def parse(tuples: list, do_label: int):
+        lex = lexer.LexicalAnalyzer(tuples[0])
+        lex.analyze_string(tuples[0][1])
+        tokens = lex.get_tokens()
+
+        statements = []
+
+        while tuples[0][0] != do_label.number.value:
+            statements.append(Statement.parse(tuples))
+            lex.analyze_string(tuples[0][1])
+            tokens = lex.get_tokens()
+        end_do_operator = Statement.parse(tuples)
+
+        return NestedList(statements, end_do_operator)
+
+    def check(self, labels):
+        for stmt in self.statements:
+            stmt.check(labels)
+
 
 @dataclass
 class GotoStatement(Node):
