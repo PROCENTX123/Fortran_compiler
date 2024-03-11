@@ -594,13 +594,13 @@ class IfStatement(Node):
 @dataclass
 class ArrayDeclaration(Node):
     identifier: Identifier
-    size: Number
+    size: ExpressionList
 
     @staticmethod
     def parse(lex: lexer.LexicalAnalyzer):
         identifier = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, None))
         cop_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Lbracket, None))
-        size = Number.parse(lex)
+        size = ExpressionList.parse(lex)
         ccp_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Rbracket, None))
         ident = Identifier(identifier.attrib)
         return ArrayDeclaration(ident, size)
@@ -612,8 +612,8 @@ class ArrayDeclaration(Node):
         # if not isinstance(self.size, Number):
         #     raise TypeError(f"Размер массива {self.identifier.name} должен быть числом")
 
-        if not (isinstance(self.size.value, int) and self.size.value >= 0):
-            raise ValueError(f"Размер массива {self.identifier.name} должен быть целым числом без знака, получено: {self.size.value}")
+        # if not (isinstance(self.size.value, int) and self.size.value >= 0):
+        #     raise ValueError(f"Размер массива {self.identifier.name} должен быть целым числом без знака, получено: {self.size.value}")
 
 
 @dataclass

@@ -51,7 +51,7 @@ text -> character | character text
 character -> ALL_SYMBOLS    
 identifier_list -> identifier | identifier ',' identifier_list
 array_declaration_list -> array_declaration | array_declaration ',' array_declaration_list
-array_declaration -> identifier '(' INTEGER ')'
+array_declaration -> identifier '(' expression_list ')'
 number -> INTEGER | REAL
 do_label -> label
 

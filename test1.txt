@@ -1,13 +1,12 @@
       Program DEMo
 
+      dimension a(3,5)
+
+      c = 3
+      b = c + 5.5
 
 
-
-      do 5 i = 1, 10, 1
-      do 3 j = 2, 100, 2
-10    goto 50
-3     goto 20
-5     goto 30
+      a(3,5) = 5
 
 
       end
