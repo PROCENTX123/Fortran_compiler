@@ -7,7 +7,12 @@
 102   FORMAT (E10.3)
 103   FORMAT (10X, 5HHello, I6)
 
-
+      Do 5 i = 1, 10
+      an = 2 + 3
+      do 2 i = 2, 100, 2
+      ma = 3 + 3
+2     continue
+5     if ((k - 10) / 2) 20, 30, 40
 
 
       I = 5

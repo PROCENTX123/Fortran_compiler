@@ -25,6 +25,15 @@ class IdentifierNameLengthError(SemanticError):
         return f"Длина идентификатора:{self.pos}, больше 6 символов"
 
 
+class UndefinedSymbolError(SemanticError):
+    def __init__(self, pos, identifier):
+        self.pos = pos
+        self.identifier = identifier
+
+    @property
+    def message(self):
+        return f"Идентификатор {self.identifier} не определен"
+
 class LabelInexistantError(SemanticError):
     def __init__(self, pos, label):
         self.pos = pos

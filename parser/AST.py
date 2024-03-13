@@ -3,6 +3,7 @@ import parser_edsl as pe
 from lexer import lexer
 from lexer import Domaintag
 from lexer.errors import *
+from .SymbolsTable import SymbolTable
 
 stack_do = []
 
@@ -56,17 +57,26 @@ class Statement(Node):
             except:
                 raise ex
 
-    def check(self, labels):
-        pass
+    def check(self, symbols_table:SymbolTable):
+        self.statement = self.statement.check(symbols_table)
+        return self
+
 
 
 @dataclass
 class Identifier(Node):
     name: str
 
-    def check(self, labels):
+    def check(self, symbols_table, system_functions):
         if len(self.name) > 6:
             raise IdentifierNameLengthError(None, self.name)
+        # if self.name not in system_functions:
+        #
+        if symbols_table.lookup(self.name) is None:
+            raise UndefinedSymbolError(None, self.name)
+        self.identifier = self.identifier.check(symbols_table)
+        return self
+
 
 
 @dataclass
@@ -101,17 +111,18 @@ class Label(Node):
         result = Number.parse(lex)
         return Label(result)
 
-    def check(self, labels):
-        if self.number.value not in labels:
-            raise LabelInexistantError(None, self.number.value)
-
+    def check(self, symbols_table):
+        label = f"LABEL_{self.number.value}"
+        # if symbols_table.lookup(label) is None:
+        #     raise LabelInexistantError(None, self.number.value)
 
 class Expression(Node):
     def __init__(self, expressions):
         self.expressions = expressions
 
-    def check(self, labels):
-        pass
+    def check(self, symbols_table):
+        for expr in self.expressions:
+            expr.check(symbols_table)
 
 
 @dataclass
@@ -132,9 +143,9 @@ class ArithmeticExpression(Node):
             result = ArithmeticExpression(result if result else term, op.attrib, rhs)
             current_token = lex.current_token()
         return result if result else term
-    def check(self, labels):
-        self.left.check(labels)
-        self.right.check(labels)
+    def check(self, symbols_table):
+        self.left.check(symbols_table)
+        self.right.check(symbols_table)
 
 
 @dataclass
@@ -151,9 +162,10 @@ class IdentifierList(Node):
             current_token = lex.current_token()
         return IdentifierList(identifiers)
 
-    def check(self, labels):
-        for ident in self.identifiers:
-            ident.check(labels)
+    def check(self, symbols_table):
+        pass
+        # for ident in self.identifiers:
+            # ident.check(symbols_table)
 
 
 @dataclass
@@ -170,9 +182,9 @@ class ExpressionList(Node):
             current_token = lex.current_token()
         return ExpressionList(expressions)
 
-    def check(self, labels):
+    def check(self, symbols_table:SymbolTable):
         for expr in self.expressions:
-            expr.check(labels)
+            expr.check(symbols_table)
 
 
 @dataclass
@@ -199,9 +211,9 @@ class StatementList(Node):
 
         return StatementList(statements)
 
-    def check(self, labels):
+    def check(self,  symbols_table:SymbolTable):
         for stmt in self.statements:
-            stmt.check(labels)
+            stmt.check(symbols_table)
 
 
 @dataclass
@@ -226,15 +238,22 @@ class Program(Node):
         if identifier.tag != Domaintag.DomainTag.Identifier:
             raise ValueError("Ожидается идентификатор после 'PROGRAM'")
 
+
         identifier = Identifier(identifier.attrib)
         tuples.pop(0)
         statements = StatementList.parse(tuples)
 
         return Program(identifier, statements)
 
-    def check(self, labels: list):
-        self.identifier.check(labels)
-        self.statement_list.check(labels)
+    def check(self, symbols_table: SymbolTable):
+        system_functions = ['sin', 'cos', 'alog', 'alog10', 'sqrt', 'abs', 'exp']
+        program_symbols_table = SymbolTable(parent=symbols_table)
+        # for function in system_functions:
+            # program_symbols_table.add(function)
+        # self.identifier.check(program_symbols_table)
+        self.statement_list.check(program_symbols_table)
+
+
 
 
 @dataclass
@@ -251,6 +270,8 @@ class AssignmentStatement(Node):
         tok = lex.next_token()
         if tok.tag == Domaintag.DomainTag.Assign:
             expression = ArithmeticExpression.parse(lex)
+            if lex.current_token().tag != Domaintag.DomainTag.EOF:
+                raise ValueError("Выражение спарсилось не до конца")
             tuples.pop(0)
             return AssignmentStatement(ident, expression, None)
         elif tok.tag == Domaintag.DomainTag.Lbracket:
@@ -264,7 +285,9 @@ class AssignmentStatement(Node):
             raise RuntimeError(f"{tok.coords}: expected token with tag - Assign | Lbracket, got - {tok.tag}")
 
     def check(self, labels):
-        self.identifier.check(labels)
+        pass
+        # self.identifier.check(labels)
+        # if self.identifier ==
 
 
 @dataclass
@@ -606,7 +629,8 @@ class ArrayDeclaration(Node):
         return ArrayDeclaration(ident, size)
 
     def check(self, labels):
-        self.identifier.check(labels)
+        pass
+        # self.identifier.check(labels)
 
         #пока не нужно отлетит на парсинге в runtime
         # if not isinstance(self.size, Number):
@@ -708,7 +732,7 @@ class Factor(Node):
             if tok.tag == Domaintag.DomainTag.Lbracket:
                 cop_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Lbracket, None))
                 expr_list = ExpressionList.parse(lex)
-                ccp_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Lbracket, None))
+                ccp_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Rbracket, None))
                 return Call(identifier, expr_list)
             else:
                 return Identifier(identifier.attrib)

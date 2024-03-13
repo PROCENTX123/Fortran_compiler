@@ -1,12 +1,6 @@
       Program DEMo
 
-      dimension a(3,5)
-
-      c = 3
-      b = c + 5.5
-
-
-      a(3,5) = 5
+      a = b(1) + 3
 
 
       end
