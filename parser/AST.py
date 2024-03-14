@@ -152,18 +152,39 @@ class ArithmeticExpression(Node):
     def check(self, symbols_table):
         if isinstance(self.left, Identifier):
             if symbols_table.lookup(self.left.name) is None:  # мейби нужно вызывать raise error, потому что переменная не определена выше
-                symbols_table.add(self.left.name, None, True)
+                raise ValueError("Подозрительная переменная")
+                # symbols_table.add(self.left.name, None, True)
 
         self.left = self.left.check(symbols_table)
         self.right = self.right.check(symbols_table)
+
         if isinstance(self.left.type, IntegerT) and isinstance(self.right.type, IntegerT):
             self.type = IntegerT()
-        elif self.left.type is None or self.right.type is None:
-            self.type = None
+        # elif self.left.type is None or self.right.type is None:
+        #     self.type = None
         else:
+            if isinstance(self.left.type, IntegerT):
+                self.left = FloatConversion(self.left).check(symbols_table)
+            else:
+                self.right = FloatConversion(self.right).check(symbols_table)
             self.type = FloatT()
         return self
+@dataclass
+class FloatConversion(Node):
+    expression: Expression
 
+    def check(self, symbol_table):
+        self.expression = self.expression.check(symbol_table)
+        self.type = FloatT()
+        return self
+@dataclass
+class IntegerConversion(Node):
+    expression:Expression
+
+    def check(self, symbol_table):
+        self.expression = self.expression.check(symbol_table)
+        self.type = IntegerT()
+        return self
 
 @dataclass
 class IdentifierList(Node):
@@ -315,7 +336,10 @@ class AssignmentStatement(Node):
         self.identifier = self.identifier.check(symbol_table)
 
         if self.identifier.type != self.expression.type:
-            symbol_table.swap_type(self.identifier, self.expression.type)
+            if isinstance(self.expression.type, IntegerT):
+                self.expression = FloatConversion(self.expression).check(symbol_table)
+            else:
+                self.expression = IntegerConversion(self.expression).check(symbol_table)
         return self
 
 
@@ -696,7 +720,7 @@ class ArrayDeclaration(Node):
             size.append(self.size.expressions[i].value)
 
         if symbol_table.lookup(self.identifier.name) is None:
-            symbol_table.add(self.identifier.name, ArrayT(FloatT, size))
+            symbol_table.add(self.identifier.name, ArrayT(FloatT(), size))
         return self
 
 
@@ -782,18 +806,29 @@ class Call(Node):
 
         self.identifier = self.identifier.check(symbol_table)
         self.argument_list = self.argument_list.check(symbol_table)
+
         if isinstance(self.identifier.type, ArrayT):
-            for i in range(len(self.argument_list.expressions)):
-                if isinstance(self.argument_list.expressions[i], Number) is False:
-                    raise ValueError("При вызове массива вводится не число")
-                if isinstance(self.argument_list.expressions[i].type, IntegerT) is False:
-                    raise ValueError("При вызове массива вводится не целое число")
-                if self.argument_list.expressions[i].value < 0:
-                    raise ValueError(
-                        "При вызове массива должно использоваться беззнаковое число, однако обнаружено число с знаком.")
+            return ArrayIndex(self.identifier, self.argument_list).check(symbol_table)
 
         self.type = self.identifier.type
         return self
+@dataclass
+class ArrayIndex(Node):
+    name: Identifier
+    argument_list: ExpressionList
+    def check(self, symbol_table):
+
+        for i in range(len(self.argument_list.expressions)):
+
+            if not isinstance(self.argument_list.expressions[i].type, IntegerT):
+                self.argument_list.expressions[i] = IntegerConversion(self.argument_list.expressions[i]).check(symbol_table)
+
+            if isinstance(self.argument_list.expressions[i], Number) and self.argument_list.expressions[i].value < 0:
+                raise ValueError(
+                    "При вызове массива должно использоваться беззнаковое число, однако обнаружено число с знаком.")
+        self.type = self.name.type
+        return self
+
 
 
 @dataclass
@@ -825,8 +860,8 @@ class Factor(Node):
         else:
             raise RuntimeError("")
 
-    def check(self, labels):
-        self.value.check(labels)
+    def check(self, symbol_table):
+        self.value = self.value.check(symbol_table)
         return self
 
 
@@ -845,9 +880,9 @@ class Exponentiation(Node):
             return Exponentiation(factor, rhs)
         return factor
 
-    def check(self, labels):
-        self.base = self.base.check(labels)
-        self.exponent = self.exponent.check(labels)
+    def check(self, symbol_table):
+        self.base = self.base.check(symbol_table)
+        self.exponent = self.exponent.check(symbol_table)
         if isinstance(self.base.type, IntegerT) and isinstance(self.exponent.type, IntegerT):
             self.type = IntegerT()
         elif self.base.type is None or self.exponent.type is None:

@@ -1,7 +1,6 @@
       Program DEMo
-
-
-      b = 2 * (2 * 2) ** 2
+  
+      c = 2 + 3
 
 
       end
