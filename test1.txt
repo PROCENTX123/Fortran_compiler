@@ -1,17 +1,7 @@
       Program DEMo
-      Dimension a(+2)
 
-100   FORMAT (I5)
-101   FORMAT (2F10.2)
-102   FORMAT (E10.3)
-103   FORMAT (10X, 5HHello, I6)
 
-20    GOTO 50
-
-      a = 4
-      b = 5
-10    c = d + h
-      h = 3
+      b = 2 * (2 * 2) ** 2
 
 
       end

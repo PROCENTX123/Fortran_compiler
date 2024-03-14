@@ -698,14 +698,6 @@ class ArrayDeclaration(Node):
         if symbol_table.lookup(self.identifier.name) is None:
             symbol_table.add(self.identifier.name, ArrayT(FloatT, size))
         return self
-        # self.identifier.check(labels)
-
-        #пока не нужно отлетит на парсинге в runtime
-        # if not isinstance(self.size, Number):
-        #     raise TypeError(f"Размер массива {self.identifier.name} должен быть числом")
-
-        # if not (isinstance(self.size.value, int) and self.size.value >= 0):
-        #     raise ValueError(f"Размер массива {self.identifier.name} должен быть целым числом без знака, получено: {self.size.value}")
 
 
 @dataclass
@@ -783,20 +775,23 @@ class Call(Node):
     identifier: Identifier
     argument_list: ExpressionList
 
-    # def parse(lex: lexer.LexicalAnalyzer):
-    #     identifier = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, None))
-    #     cop_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Lbracket, None))
-    #     value = ExpressionList.parse(lex)
-    #     ccp_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Rbracket, None))
-    #     return Call(identifier, value)
 
     def check(self, symbol_table):
         if self.identifier.name in symbol_table.program_functions:
             self.identifier.type = FunctionsT
 
-
         self.identifier = self.identifier.check(symbol_table)
         self.argument_list = self.argument_list.check(symbol_table)
+        if isinstance(self.identifier.type, ArrayT):
+            for i in range(len(self.argument_list.expressions)):
+                if isinstance(self.argument_list.expressions[i], Number) is False:
+                    raise ValueError("При вызове массива вводится не число")
+                if isinstance(self.argument_list.expressions[i].type, IntegerT) is False:
+                    raise ValueError("При вызове массива вводится не целое число")
+                if self.argument_list.expressions[i].value < 0:
+                    raise ValueError(
+                        "При вызове массива должно использоваться беззнаковое число, однако обнаружено число с знаком.")
+
         self.type = self.identifier.type
         return self
 
