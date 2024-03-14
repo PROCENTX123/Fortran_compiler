@@ -195,3 +195,21 @@ class ArrayT(Type):
     def castable_to(self, other_type):
         return self.size == other_type.size and self.type == other_type.type
 
+
+class FunctionsT(Type):
+    name = "func"
+
+    def __init__(self, retT: Type, argsT: list[Type]):
+        self.retT = retT
+        self.argsT = argsT
+
+    def __str__(self):
+        return f"{self.retT}(" + ','.join([str(v) for v in self.argsT]) + ")"
+
+    def castable_to(self, other_type):
+        result = self.retT == other_type.retT and len(self.argsT) == len(other_type.argsT)
+        if not result:
+            return False
+        for idx in range(len(self.argsT)):
+            result &= self.argsT[idx].castable_to(other_type.argsT[idx])
+        return result

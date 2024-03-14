@@ -269,7 +269,9 @@ class Program(Node):
         for function in system_functions:
             program_symbols_table.program_functions.append(function)
         self.statement_list = self.statement_list.check(program_symbols_table)
-        return self
+        program_symbols_table.suspicious_symbols = [symbol for symbol in program_symbols_table.suspicious_symbols if
+                                                    symbol.value not in program_symbols_table.symbols]
+        return self, program_symbols_table
 
 
 
@@ -767,9 +769,21 @@ class Call(Node):
     identifier: Identifier
     argument_list: ExpressionList
 
-    def check(self, labels):
-        self.identifier.check(labels)
-        self.argument_list.check(labels)
+    # def parse(lex: lexer.LexicalAnalyzer):
+    #     identifier = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, None))
+    #     cop_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Lbracket, None))
+    #     value = ExpressionList.parse(lex)
+    #     ccp_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Rbracket, None))
+    #     return Call(identifier, value)
+
+    def check(self, symbol_table):
+        if self.identifier.name in symbol_table.program_functions:
+            self.identifier.type = FunctionsT
+
+
+        self.identifier = self.identifier.check(symbol_table)
+        self.argument_list = self.argument_list.check(symbol_table)
+        self.type = self.identifier.type
         return self
 
 
@@ -789,13 +803,14 @@ class Factor(Node):
             ccp_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Rbracket, None))
             return result
         elif tok.tag == Domaintag.DomainTag.Identifier:
-            identifier = lex.next_token()
+            identifier = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, None))
             tok = lex.current_token()
             if tok.tag == Domaintag.DomainTag.Lbracket:
                 cop_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Lbracket, None))
                 expr_list = ExpressionList.parse(lex)
                 ccp_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Rbracket, None))
-                return Call(identifier, expr_list)
+                ident = Identifier(identifier.attrib)
+                return Call(ident, expr_list)
             else:
                 return Identifier(identifier.attrib)
         else:

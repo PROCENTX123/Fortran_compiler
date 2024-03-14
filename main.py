@@ -4,9 +4,9 @@ from pprint import pprint
 
 
 if __name__ == "__main__":
-    unique_labels, pair_lable_operator = make_lexer('test.txt')
+    unique_labels, pair_lable_operator = make_lexer('test1.txt')
     tree = Program.parse(pair_lable_operator)
-    tree.check()
+    _, symbol_table = tree.check()
     pprint(tree)
     print("NICE")
 
