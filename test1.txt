@@ -1,6 +1,7 @@
       Program DEMo
   
-      c = 2 + 3
+10    c = d + 3
+20    d = 5 + 4
 
 
       end

@@ -5,6 +5,7 @@ from lexer import Domaintag
 from lexer.errors import *
 from parser.Types import *
 from parser.SymbolsTable import *
+from llvmlite import ir, binding
 
 stack_do = []
 format_labels = []
@@ -16,9 +17,9 @@ class Node:
     def parse(lex: lexer.LexicalAnalyzer):
         raise NotImplementedError()
 
-
+@dataclass
 class Statement(Node):
-
+    label: int
     @staticmethod
     def parse(tuples: list):
         lex = lexer.LexicalAnalyzer(tuples[0])
@@ -73,8 +74,10 @@ class Identifier(Node):
         if len(self.name) > 6:
             raise IdentifierNameLengthError(None, self.name)
 
-        if symbol_table.lookup(self.name) is not None:
+        if symbol_table.lookup(self.name):
             self.type = symbol_table.lookup(self.name).type
+        else:
+            symbol_table.add(self.name, FloatT(), True)
         return self
 
 
@@ -152,8 +155,8 @@ class ArithmeticExpression(Node):
     def check(self, symbols_table):
         if isinstance(self.left, Identifier):
             if symbols_table.lookup(self.left.name) is None:  # мейби нужно вызывать raise error, потому что переменная не определена выше
-                raise ValueError("Подозрительная переменная")
-                # symbols_table.add(self.left.name, None, True)
+                # raise ValueError("Подозрительная переменная")
+                symbols_table.add(self.left.name, FloatT(), True)
 
         self.left = self.left.check(symbols_table)
         self.right = self.right.check(symbols_table)
@@ -250,7 +253,7 @@ class StatementList(Node):
 
         return StatementList(statements)
 
-    def check(self,  symbols_table:SymbolTable):
+    def check(self,  symbols_table: SymbolTable):
         for i in range(len(self.statements)):
             self.statements[i] = self.statements[i].check(symbols_table)
         return self
@@ -286,21 +289,31 @@ class Program(Node):
 
         return Program(identifier, statements), format_labels
 
+    def codegen(self, module_name=None):
+        program_module = ir.Module(name=module_name if module_name else __file__)
+        program_module.triple = binding.get_default_triple()
+        program_module.data_layout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128"
+
+        for statement in self.statement_list:
+            statement.codegen(self.symbol_table)
+        return program_module
+
+
     def check(self):
         system_functions = ['sin', 'cos', 'alog', 'alog10', 'sqrt', 'abs', 'exp']
-        program_symbols_table = SymbolTable()
+        self.symbols_table = SymbolTable()
         for function in system_functions:
-            program_symbols_table.program_functions.append(function)
-        self.statement_list = self.statement_list.check(program_symbols_table)
-        program_symbols_table.suspicious_symbols = [symbol for symbol in program_symbols_table.suspicious_symbols if
-                                                    symbol.value not in program_symbols_table.symbols]
-        return self, program_symbols_table
+            self.symbols_table.program_functions.append(function)
+        self.statement_list = self.statement_list.check(self.symbols_table)
+        self.symbols_table.suspicious_symbols = [symbol for symbol in self.symbols_table.suspicious_symbols if
+                                                    symbol.value not in self.symbols_table.symbols]
+        return self, self.symbols_table
 
 
 
 
 @dataclass
-class AssignmentStatement(Node):
+class AssignmentStatement(Statement):
     identifier: Identifier
     expression: ArithmeticExpression
     index: ExpressionList | None
@@ -315,15 +328,17 @@ class AssignmentStatement(Node):
             expression = ArithmeticExpression.parse(lex)
             if lex.current_token().tag != Domaintag.DomainTag.EOF:
                 raise ValueError("Выражение спарсилось не до конца")
+            label_op = tuples[0][0]
             tuples.pop(0)
-            return AssignmentStatement(ident, expression, None)
+            return AssignmentStatement(label_op, ident, expression, None)
         elif tok.tag == Domaintag.DomainTag.Lbracket:
             expr_list = ExpressionList.parse(lex)
             ccp_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Rbracket, None))
             eq_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Assign, None))
             expr = ArithmeticExpression.parse(lex)
+            label_op = tuples[0][0]
             tuples.pop(0)
-            return AssignmentStatement(ident, expr, expr_list)
+            return AssignmentStatement(label_op, ident, expr, expr_list)
         else:
             raise RuntimeError(f"{tok.coords}: expected token with tag - Assign | Lbracket, got - {tok.tag}")
 
@@ -344,7 +359,7 @@ class AssignmentStatement(Node):
 
 
 @dataclass
-class ReadStatement(Node):
+class ReadStatement(Statement):
     format_identifier: Label
     identifiers: IdentifierList
 
@@ -357,8 +372,9 @@ class ReadStatement(Node):
         label = Label.parse(lex)
         comma_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Comma, None))
         identifiers = IdentifierList.parse(lex)
+        label_op = tuples[0][0]
         tuples.pop(0)
-        return ReadStatement(label, identifiers)
+        return ReadStatement(label_op, label, identifiers)
 
     def check(self, symbols_table):
         self.format_identifier = self.format_identifier.check(symbols_table)
@@ -367,7 +383,7 @@ class ReadStatement(Node):
 
 
 @dataclass
-class PrintStatement(Node):
+class PrintStatement(Statement):
     format_identifier: Label
     identifiers: ExpressionList
 
@@ -380,8 +396,9 @@ class PrintStatement(Node):
         label = Label.parse(lex)
         comma_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Comma, None))
         identifiers = ExpressionList.parse(lex)
+        label_op = tuples[0][0]
         tuples.pop(0)
-        return PrintStatement(label, identifiers)
+        return PrintStatement(label_op, label, identifiers)
 
     def check(self, labels):
         self.format_identifier.check(labels)
@@ -493,7 +510,7 @@ class FormatList(Node):
 
 
 @dataclass
-class FormatStatement(Node):
+class FormatStatement(Statement):
     format_list: FormatList
 
     @staticmethod
@@ -507,8 +524,9 @@ class FormatStatement(Node):
         tokens = lex.get_tokens()
         format_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, "format"))
         format_list = FormatList.parse(lex)
+        label_op = tuples[0][0]
         tuples.pop(0)
-        return FormatStatement(format_list)
+        return FormatStatement(label_op, format_list)
 
     def check(self, labels):
         return self
@@ -555,7 +573,7 @@ class NumberList(Node):
 
 
 @dataclass
-class DoStatement(Node):
+class DoStatement(Statement):
     do_label: Label
     index: Identifier
     values: NumberList
@@ -574,9 +592,10 @@ class DoStatement(Node):
         index = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, None))
         eq_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Assign, None))
         values = NumberList.parse(lex)
+        lable_op = tuples[0][0]
         tuples.pop(0)
         nested_operators = NestedList.parse(tuples, do_label)
-        return DoStatement(do_label, index, values, nested_operators)
+        return DoStatement(lable_op, do_label, index, values, nested_operators)
 
     def check(self, symbol_table):
         self.values = self.values.check(symbol_table)
@@ -584,8 +603,7 @@ class DoStatement(Node):
             symbol_table.add(self.index.attrib, IntegerT())
         else:
             symbol_table.add(self.index, FloatT())
-        new_local = symbol_table.new_table()
-        self.nested_operators = self.nested_operators.check(new_local)
+        self.nested_operators = self.nested_operators.check(symbol_table)
         return self
 
 @dataclass
@@ -624,8 +642,8 @@ class NestedList(Node):
 
 
 @dataclass
-class GotoStatement(Node):
-    label: Label
+class GotoStatement(Statement):
+    go_to_label: Label
 
     @staticmethod
     def parse(tuples: list):
@@ -634,16 +652,17 @@ class GotoStatement(Node):
         tokens = lex.get_tokens()
         goto_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, "goto"))
         label = Label.parse(lex)
+        label_op = tuples[0][0]
         tuples.pop(0)
-        return GotoStatement(label)
+        return GotoStatement(label_op, label)
 
     def check(self, labels):
-        self.label.check(labels)
+        self.go_to_label.check(labels)
         return self
 
 
 @dataclass
-class ContinueStatement(Node):
+class ContinueStatement(Statement):
 
     @staticmethod
     def parse(tuples: list):
@@ -651,15 +670,16 @@ class ContinueStatement(Node):
         lex.analyze_string(tuples[0][1])
         tokens = lex.get_tokens()
         continue_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, "continue"))
+        label_op = tuples[0][0]
         tuples.pop(0)
-        return ContinueStatement()
+        return ContinueStatement(label_op)
 
     def check(self, labels):
         return self
 
 
 @dataclass
-class IfStatement(Node):
+class IfStatement(Statement):
     condition: ArithmeticExpression
     true_label: Label
     false_label: Label
@@ -679,8 +699,9 @@ class IfStatement(Node):
         false_label = Label.parse(lex)
         comma_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Comma, None))
         next_label = Label.parse(lex)
+        label_op = tuples[0][0]
         tuples.pop(0)
-        return IfStatement(expression, true_label, false_label, next_label)
+        return IfStatement(label_op, expression, true_label, false_label, next_label)
 
     def check(self, symbol_table):
         self.condition = self.condition.check(symbol_table)
@@ -745,7 +766,7 @@ class ArrayDeclarationList(Node):
 
 
 @dataclass
-class DimensionStatement(Node):
+class DimensionStatement(Statement):
     array_declaration_list: ArrayDeclarationList
 
     @staticmethod
@@ -755,8 +776,9 @@ class DimensionStatement(Node):
         tokens = lex.get_tokens()
         dim_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, "dimension"))
         array_decl_list = ArrayDeclarationList.parse(lex)
+        lable_op = tuples[0][0]
         tuples.pop(0)
-        return DimensionStatement(array_decl_list)
+        return DimensionStatement(lable_op, array_decl_list)
 
     def check(self, symbol_table):
         self.array_declaration_list = self.array_declaration_list.check(symbol_table)
