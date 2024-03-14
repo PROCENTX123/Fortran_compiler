@@ -7,6 +7,7 @@ from parser.Types import *
 from parser.SymbolsTable import *
 
 stack_do = []
+format_labels = []
 
 @dataclass
 class Node:
@@ -241,6 +242,7 @@ class Program(Node):
 
     @staticmethod
     def parse(tuples: list):
+        global format_labels
         lex = lexer.LexicalAnalyzer(tuples[0])
         lex.analyze_string(tuples[0][1])
         tokens = lex.get_tokens()
@@ -261,7 +263,7 @@ class Program(Node):
         tuples.pop(0)
         statements = StatementList.parse(tuples)
 
-        return Program(identifier, statements)
+        return Program(identifier, statements), format_labels
 
     def check(self):
         system_functions = ['sin', 'cos', 'alog', 'alog10', 'sqrt', 'abs', 'exp']
@@ -472,8 +474,12 @@ class FormatStatement(Node):
 
     @staticmethod
     def parse(tuples: list):
+        global format_labels
         lex = lexer.LexicalAnalyzer(tuples[0])
         lex.analyze_string(tuples[0][1])
+        if tuples[0][0] is None:
+            raise ValueError("Передается оператор Format без метки")
+        format_labels.append(tuples[0][0])
         tokens = lex.get_tokens()
         format_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Identifier, "format"))
         format_list = FormatList.parse(lex)
@@ -677,6 +683,14 @@ class ArrayDeclaration(Node):
     def check(self, symbol_table):
         self.size = self.size.check(symbol_table)
         size = []
+        for i in range(len(self.size.expressions)):
+            if isinstance(self.size.expressions[i], Number) is False:
+                raise ValueError("В определение размера массива вводится не число")
+            if isinstance(self.size.expressions[i].type, IntegerT)is False:
+                raise ValueError("В определение размера массива вводится не целое число")
+            if self.size.expressions[i].value < 0:
+                raise ValueError("В определении размера массива должно использоваться беззнаковое число, однако обнаружено число с знаком.")
+
 
         for i in range (len(self.size.expressions)):
             size.append(self.size.expressions[i].value)

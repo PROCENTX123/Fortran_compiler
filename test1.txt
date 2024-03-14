@@ -1,10 +1,10 @@
       Program DEMo
-
+      Dimension a(+2)
 
 100   FORMAT (I5)
 101   FORMAT (2F10.2)
 102   FORMAT (E10.3)
-      FORMAT (10X, 5HHello, I6)
+103   FORMAT (10X, 5HHello, I6)
 
 20    GOTO 50
 
