@@ -3,7 +3,8 @@ import parser_edsl as pe
 from lexer import lexer
 from lexer import Domaintag
 from lexer.errors import *
-from .SymbolsTable import SymbolTable
+from parser.Types import *
+from parser.SymbolsTable import *
 
 stack_do = []
 
@@ -67,14 +68,12 @@ class Statement(Node):
 class Identifier(Node):
     name: str
 
-    def check(self, symbols_table, system_functions):
+    def check(self, symbol_table):
         if len(self.name) > 6:
             raise IdentifierNameLengthError(None, self.name)
-        # if self.name not in system_functions:
-        #
-        if symbols_table.lookup(self.name) is None:
-            raise UndefinedSymbolError(None, self.name)
-        self.identifier = self.identifier.check(symbols_table)
+
+        if symbol_table.lookup(self.name) is not None:
+            self.type = symbol_table.lookup(self.name).type
         return self
 
 
@@ -98,8 +97,12 @@ class Number(Node):
             raise RuntimeError()
         return Number(value)
 
-    def check(self, labels):
-        pass
+    def check(self, symbol_table):
+        if isinstance(self.value, int):
+            self.type = IntegerT()
+        else:
+            self.type = FloatT()
+        return self
 
 
 @dataclass
@@ -115,6 +118,7 @@ class Label(Node):
         label = f"LABEL_{self.number.value}"
         # if symbols_table.lookup(label) is None:
         #     raise LabelInexistantError(None, self.number.value)
+        return self
 
 class Expression(Node):
     def __init__(self, expressions):
@@ -123,6 +127,7 @@ class Expression(Node):
     def check(self, symbols_table):
         for expr in self.expressions:
             expr.check(symbols_table)
+        return self
 
 
 @dataclass
@@ -144,8 +149,19 @@ class ArithmeticExpression(Node):
             current_token = lex.current_token()
         return result if result else term
     def check(self, symbols_table):
-        self.left.check(symbols_table)
-        self.right.check(symbols_table)
+        if isinstance(self.left, Identifier):
+            if symbols_table.lookup(self.left.name) is None:  # мейби нужно вызывать raise error, потому что переменная не определена выше
+                symbols_table.add(self.left.name, None, True)
+
+        self.left = self.left.check(symbols_table)
+        self.right = self.right.check(symbols_table)
+        if isinstance(self.left.type, IntegerT) and isinstance(self.right.type, IntegerT):
+            self.type = IntegerT()
+        elif self.left.type is None or self.right.type is None:
+            self.type = None
+        else:
+            self.type = FloatT()
+        return self
 
 
 @dataclass
@@ -163,9 +179,9 @@ class IdentifierList(Node):
         return IdentifierList(identifiers)
 
     def check(self, symbols_table):
-        pass
-        # for ident in self.identifiers:
-            # ident.check(symbols_table)
+        for i in range (len(self.identifiers)):
+            self.identifiers[i] = self.identifiers[i].check(symbols_table)
+        return self
 
 
 @dataclass
@@ -182,9 +198,10 @@ class ExpressionList(Node):
             current_token = lex.current_token()
         return ExpressionList(expressions)
 
-    def check(self, symbols_table:SymbolTable):
-        for expr in self.expressions:
-            expr.check(symbols_table)
+    def check(self, symbols_table):
+        for i in range(len(self.expressions)):
+            self.expressions[i] = self.expressions[i].check(symbols_table)
+        return self
 
 
 @dataclass
@@ -212,8 +229,9 @@ class StatementList(Node):
         return StatementList(statements)
 
     def check(self,  symbols_table:SymbolTable):
-        for stmt in self.statements:
-            stmt.check(symbols_table)
+        for i in range(len(self.statements)):
+            self.statements[i] = self.statements[i].check(symbols_table)
+        return self
 
 
 @dataclass
@@ -245,13 +263,13 @@ class Program(Node):
 
         return Program(identifier, statements)
 
-    def check(self, symbols_table: SymbolTable):
+    def check(self):
         system_functions = ['sin', 'cos', 'alog', 'alog10', 'sqrt', 'abs', 'exp']
-        program_symbols_table = SymbolTable(parent=symbols_table)
-        # for function in system_functions:
-            # program_symbols_table.add(function)
-        # self.identifier.check(program_symbols_table)
-        self.statement_list.check(program_symbols_table)
+        program_symbols_table = SymbolTable()
+        for function in system_functions:
+            program_symbols_table.program_functions.append(function)
+        self.statement_list = self.statement_list.check(program_symbols_table)
+        return self
 
 
 
@@ -284,10 +302,17 @@ class AssignmentStatement(Node):
         else:
             raise RuntimeError(f"{tok.coords}: expected token with tag - Assign | Lbracket, got - {tok.tag}")
 
-    def check(self, labels):
-        pass
-        # self.identifier.check(labels)
-        # if self.identifier ==
+    def check(self, symbol_table):
+        self.expression = self.expression.check(symbol_table)
+
+        if symbol_table.lookup(self.identifier.name) is None:
+            symbol_table.add(self.identifier.name, self.expression.type)
+
+        self.identifier = self.identifier.check(symbol_table)
+
+        if self.identifier.type != self.expression.type:
+            symbol_table.swap_type(self.identifier, self.expression.type)
+        return self
 
 
 @dataclass
@@ -307,9 +332,10 @@ class ReadStatement(Node):
         tuples.pop(0)
         return ReadStatement(label, identifiers)
 
-    def check(self, labels):
-        self.format_identifier.check(labels)
-        self.identifiers.check(labels)
+    def check(self, symbols_table):
+        self.format_identifier = self.format_identifier.check(symbols_table)
+        self.identifiers = self.identifiers.check(symbols_table)
+        return self
 
 
 @dataclass
@@ -331,7 +357,7 @@ class PrintStatement(Node):
 
     def check(self, labels):
         self.format_identifier.check(labels)
-        self.format_identifier.check(labels)
+        return self
 
 
 @dataclass
@@ -453,7 +479,7 @@ class FormatStatement(Node):
         return FormatStatement(format_list)
 
     def check(self, labels):
-        pass
+        return self
 
 
 @dataclass
@@ -484,8 +510,15 @@ class NumberList(Node):
             step = Number(1)
         return NumberList(start_value, end_value, step)
 
-    def check(self):
-        pass
+    def check(self, symbol_table):
+        self.end_value = self.end_value.check(symbol_table)
+        self.start_value = self.start_value.check(symbol_table)
+        self.step = self.step.check(symbol_table)
+        if isinstance(self.end_value.type, IntegerT) and isinstance(self.start_value.type, IntegerT) and isinstance(self.step.type, IntegerT):
+            self.type = IntegerT()
+        else:
+            self.type = FloatT()
+        return self
 
 
 
@@ -513,8 +546,15 @@ class DoStatement(Node):
         nested_operators = NestedList.parse(tuples, do_label)
         return DoStatement(do_label, index, values, nested_operators)
 
-    def check(self, labels):
-        pass
+    def check(self, symbol_table):
+        self.values = self.values.check(symbol_table)
+        if isinstance(self.values.type, IntegerT):
+            symbol_table.add(self.index.attrib, IntegerT())
+        else:
+            symbol_table.add(self.index, FloatT())
+        new_local = symbol_table.new_table()
+        self.nested_operators = self.nested_operators.check(new_local)
+        return self
 
 @dataclass
 class NestedList(Node):
@@ -545,9 +585,10 @@ class NestedList(Node):
 
         return NestedList(statements, end_do_operator)
 
-    def check(self, labels):
-        for stmt in self.statements:
-            stmt.check(labels)
+    def check(self, symbol_table):
+        for i in range (len(self.statements)):
+            self.statements[i] = self.statements[i].check(symbol_table)
+        return self
 
 
 @dataclass
@@ -566,6 +607,7 @@ class GotoStatement(Node):
 
     def check(self, labels):
         self.label.check(labels)
+        return self
 
 
 @dataclass
@@ -581,7 +623,7 @@ class ContinueStatement(Node):
         return ContinueStatement()
 
     def check(self, labels):
-        pass
+        return self
 
 
 @dataclass
@@ -608,10 +650,12 @@ class IfStatement(Node):
         tuples.pop(0)
         return IfStatement(expression, true_label, false_label, next_label)
 
-    def check(self, labels):
-        self.true_label.check(labels)
-        self.false_label.check(labels)
-        self.next_label.check(labels)
+    def check(self, symbol_table):
+        self.condition = self.condition.check(symbol_table)
+        self.true_label = self.true_label.check(symbol_table)
+        self.false_label = self.false_label.check(symbol_table)
+        self.next_label = self.next_label.check(symbol_table)
+        return self
 
 
 @dataclass
@@ -628,8 +672,16 @@ class ArrayDeclaration(Node):
         ident = Identifier(identifier.attrib)
         return ArrayDeclaration(ident, size)
 
-    def check(self, labels):
-        pass
+    def check(self, symbol_table):
+        self.size = self.size.check(symbol_table)
+        size = []
+
+        for i in range (len(self.size.expressions)):
+            size.append(self.size.expressions[i].value)
+
+        if symbol_table.lookup(self.identifier.name) is None:
+            symbol_table.add(self.identifier.name, ArrayT(FloatT, size))
+        return self
         # self.identifier.check(labels)
 
         #пока не нужно отлетит на парсинге в runtime
@@ -654,9 +706,10 @@ class ArrayDeclarationList(Node):
             current_token = lex.current_token()
         return ArrayDeclarationList(declarations)
 
-    def check(self, labels):
-        for decl in self.declarations:
-            decl.check(labels)
+    def check(self, symbol_table):
+        for i in range(len(self.declarations)):
+            self.declarations[i] = self.declarations[i].check(symbol_table)
+        return self
 
 
 @dataclass
@@ -673,8 +726,9 @@ class DimensionStatement(Node):
         tuples.pop(0)
         return DimensionStatement(array_decl_list)
 
-    def check(self, labels):
-        self.array_declaration_list.check(labels)
+    def check(self, symbol_table):
+        self.array_declaration_list = self.array_declaration_list.check(symbol_table)
+        return self
 
 
 @dataclass
@@ -696,9 +750,16 @@ class Term(Node):
             current_token = lex.current_token()
         return result if result else exponential
 
-    def check(self, labels):
-        self.left.check(labels)
-        self.right.check(labels)
+    def check(self, symbol_table):
+        self.left = self.left.check(symbol_table)
+        self.right = self.right.check(symbol_table)
+        if isinstance(self.left.type, IntegerT) and isinstance(self.right.type, IntegerT):
+            self.type = IntegerT()
+        elif self.left.type is None or self.right.type is None:
+            self.type = None
+        else:
+            self.type = FloatT()
+        return self
 
 
 @dataclass
@@ -709,6 +770,7 @@ class Call(Node):
     def check(self, labels):
         self.identifier.check(labels)
         self.argument_list.check(labels)
+        return self
 
 
 @dataclass
@@ -741,6 +803,7 @@ class Factor(Node):
 
     def check(self, labels):
         self.value.check(labels)
+        return self
 
 
 @dataclass
@@ -759,5 +822,12 @@ class Exponentiation(Node):
         return factor
 
     def check(self, labels):
-        self.base.check(labels)
-        self.exponent.check(labels)
+        self.base = self.base.check(labels)
+        self.exponent = self.exponent.check(labels)
+        if isinstance(self.base.type, IntegerT) and isinstance(self.exponent.type, IntegerT):
+            self.type = IntegerT()
+        elif self.base.type is None or self.exponent.type is None:
+            self.type = None
+        else:
+            self.type = FloatT()
+        return self

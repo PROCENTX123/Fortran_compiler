@@ -1,40 +1,47 @@
 class SymbolTable:
     def __init__(self, parent=None):
-        pass
-        # self.parent = parent
-        # self.symbols = []
-        # self.child_tables = []
 
+        self.parent = parent
+        self.symbols = []
+        self.child_tables = []
+        self.program_functions = []
+        self.suspicious_symbols = []
 
+    def swap_type(self, symbol, new_type):
+        for i in range(len(self.symbols)):
+            if symbol.name == self.symbols[i].value:
+                self.symbols[i].type = new_type
 
     def lookup(self, symbol):
-        pass
-        # return self.symbols.get(symbol, self.parent.lookup(symbol) if self.parent else None)
+        for i in range(len(self.symbols)):
+            if symbol == self.symbols[i].value:
+                return self.symbols[i]
 
+        if self.parent:
+            return self.parent.lookup(symbol)
 
+        return None
 
-    def add(self, symbol, type):
-        pass
-        # if symbol in self.symbols:
-        #     raise ValueError(f"Символ {symbol} уже определен.")
-        # self.symbols.append(Symbol(symbol, type))
+    def add(self, symbol, type, syspicious=False):
+        if symbol in self.symbols:
+            raise ValueError(f"Символ {symbol} уже определен.")
+        self.symbols.append(Symbol(symbol, type))
+        if syspicious == True:
+            self.suspicious_symbols.append(Symbol(symbol, type))
 
 
     def new_table(self):
-        pass
-        # result = SymbolTable(self)
-        # self.child_tables.append(result)
-        # return result
+        result = SymbolTable(self)
+        self.child_tables.append(result)
+        return result
 
     def print_symbols(self):
-        pass
-        # for symbol in self.symbols():
-        #     print(f"{symbol.name}: {symbol.type}")
-        # if self.parent:
-        #     self.parent.print_symbols()
+        for symbol in self.symbols():
+            print(f"{symbol.name}: {symbol.type}")
+        if self.parent:
+            self.parent.print_symbols()
 
 class Symbol:
     def __init__(self, value, type):
-        pass
-        # self.value = value
-        # self.type = type
+        self.value = value
+        self.type = type
