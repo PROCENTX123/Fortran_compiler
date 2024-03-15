@@ -34,6 +34,7 @@ R = $real(N), N = R ---> N = $int(R) ------POINT
 Предстоящие:
 
 -Генерация кода
+read, print, if, do, exp, dimension, call
 
 Операторы FORMAT нужно транслировать в форматные строки для printf и scanf, мы говорили, как это делается. Соответственно, READ и WRITE — в вызовы printf и scanf.
 

@@ -3,6 +3,8 @@ class SymbolTable:
         self.symbols = []
         self.program_functions = []
         self.suspicious_symbols = []
+        self.labels = {}
+        self.formats = {}
 
     def lookup(self, symbol):
         for i in range(len(self.symbols)):

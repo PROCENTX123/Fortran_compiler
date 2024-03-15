@@ -167,10 +167,7 @@ class ArrayT(Type):
 
 
     def llvm_type(self):
-        if self.is_function_param:
-            return self.llvm_type_ref()
-        else:
-            return self.llvm_type_init()
+        return self.llvm_type_init()
 
     def llvm_type_init(self):
         if len(self.size) == 1:

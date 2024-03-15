@@ -80,6 +80,12 @@ class Identifier(Node):
             symbol_table.add(self.name, FloatT(), True)
         return self
 
+    def codegen(self, symbols_table, lvalue=False):
+        if lvalue:
+            return symbols_table.lookup(self.name).llvmobj
+        else:
+            return symbols_table.builder.load(symbols_table.lookup(self.name).llvmobj)
+
 
 
 @dataclass
@@ -100,6 +106,12 @@ class Number(Node):
         else:
             raise RuntimeError()
         return Number(value)
+
+    def codegen(self, symbols_table):
+        if isinstance(self.type, IntegerT):
+            return ir.Constant(ir.IntType(32), self.value)
+        else:
+            return ir.Constant(ir.FloatType(), self.value)
 
     def check(self, symbol_table):
         if isinstance(self.value, int):
@@ -152,6 +164,17 @@ class ArithmeticExpression(Node):
             result = ArithmeticExpression(result if result else term, op.attrib, rhs)
             current_token = lex.current_token()
         return result if result else term
+
+    def codegen(self, symbol_table):
+        add = symbol_table.builder.add if isinstance(self.type, IntegerT) else symbol_table.builder.fadd
+        sub = symbol_table.builder.sub if isinstance(self.type, IntegerT) else symbol_table.builder.fsub
+        if self.operator == '+':
+            return add(self.left.codegen(symbol_table), self.right.codegen(symbol_table))
+        elif self.operator == '-':
+            return sub(self.left.codegen(symbol_table), self.right.codegen(symbol_table))
+        else:
+            raise RuntimeError()
+
     def check(self, symbols_table):
         if isinstance(self.left, Identifier):
             if symbols_table.lookup(self.left.name) is None:  # мейби нужно вызывать raise error, потому что переменная не определена выше
@@ -176,13 +199,20 @@ class ArithmeticExpression(Node):
 class FloatConversion(Node):
     expression: Expression
 
+    def codegen(self, symbols_table):
+        return symbols_table.builder.sitofp(self.expression.codegen(symbols_table), ir.FloatType())
+
     def check(self, symbol_table):
         self.expression = self.expression.check(symbol_table)
         self.type = FloatT()
         return self
+
 @dataclass
 class IntegerConversion(Node):
-    expression:Expression
+    expression: Expression
+
+    def codegen(self, symbols_table):
+        return symbols_table.builder.fptosi(self.expression.codegen(symbols_table), ir.IntType(32))
 
     def check(self, symbol_table):
         self.expression = self.expression.check(symbol_table)
@@ -253,6 +283,17 @@ class StatementList(Node):
 
         return StatementList(statements)
 
+    def codegen(self, symbols_table):
+        for statement in self.statements:
+            if statement.label:
+                symbols_table.labels[statement.label] = symbols_table.builder.append_basic_block(f"{statement.label}")
+        for statement in self.statements:
+            statement.codegen(symbols_table)
+        for i in range(len(symbols_table.func.basic_blocks) - 1):
+            if symbols_table.func.basic_blocks[i].terminator is None:
+                builder = ir.IRBuilder(symbols_table.func.basic_blocks[i])
+                builder.branch(symbols_table.func.basic_blocks[i + 1])
+
     def check(self,  symbols_table: SymbolTable):
         for i in range(len(self.statements)):
             self.statements[i] = self.statements[i].check(symbols_table)
@@ -293,9 +334,14 @@ class Program(Node):
         program_module = ir.Module(name=module_name if module_name else __file__)
         program_module.triple = binding.get_default_triple()
         program_module.data_layout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128"
-
-        for statement in self.statement_list:
-            statement.codegen(self.symbol_table)
+        self.symbols_table.module = program_module
+        self.symbols_table.func = ir.Function(self.symbols_table.module, ir.FunctionType(ir.VoidType(), []), "Main")
+        self.symbols_table.builder = ir.IRBuilder(self.symbols_table.func.append_basic_block("entry"))
+        for current_symbol in self.symbols_table.symbols:
+            instr = self.symbols_table.builder.alloca(current_symbol.type.llvm_type(), 1, current_symbol.value)
+            current_symbol.llvmobj = instr
+        self.statement_list.codegen(self.symbols_table)
+        self.symbols_table.builder.ret_void()
         return program_module
 
 
@@ -342,6 +388,13 @@ class AssignmentStatement(Statement):
         else:
             raise RuntimeError(f"{tok.coords}: expected token with tag - Assign | Lbracket, got - {tok.tag}")
 
+    def codegen(self, symbols_table):
+        if self.label:
+            symbols_table.builder = ir.IRBuilder(symbols_table.labels[self.label])
+        ptr = self.identifier.codegen(symbols_table, True)
+        value = self.expression.codegen(symbols_table)
+        symbols_table.builder.store(value, ptr)
+
     def check(self, symbol_table):
         self.expression = self.expression.check(symbol_table)
 
@@ -376,6 +429,14 @@ class ReadStatement(Statement):
         tuples.pop(0)
         return ReadStatement(label_op, label, identifiers)
 
+    def codegen(self, symbols_table):
+        if self.label:
+            symbols_table.builder = ir.IRBuilder(symbols_table.labels[self.label])
+        args = []
+        for identifier in self.identifiers.identifiers:
+            args.append(symbols_table.lookup(identifier.name).llvmobj)
+        symbols_table.builder.call(symbols_table.lookup_function('read').llvmobj, [symbols_table.formats[self.format_identifier.number].codegen(symbols_table)] + args)
+
     def check(self, symbols_table):
         self.format_identifier = self.format_identifier.check(symbols_table)
         self.identifiers = self.identifiers.check(symbols_table)
@@ -399,6 +460,14 @@ class PrintStatement(Statement):
         label_op = tuples[0][0]
         tuples.pop(0)
         return PrintStatement(label_op, label, identifiers)
+
+    def codegen(self, symbols_table):
+        if self.label:
+            symbols_table.builder = ir.IRBuilder(symbols_table.labels[self.label])
+        args = []
+        for identifier in self.identifiers.expressions:
+            args.append(identifier.codegen(symbols_table))
+        symbols_table.builder.call(symbols_table.lookup_function('print').llvmobj, [symbols_table.formats[self.format_identifier.number].codegen(symbols_table)] + args)
 
     def check(self, labels):
         self.format_identifier.check(labels)
@@ -437,6 +506,17 @@ class FormatItem(Node):
             details = (int(format_attr[1:]), None)
         return FormatItem(kind, details)
 
+    def codegen(self, symbol_table):
+        if self.kind == 'x':
+            return ' ' * self.details[0]
+        elif self.kind == 'h':
+            return self.details[1]
+        elif self.kind == 'e':
+            return f'%{self.details[0] + self.details[1] + 1}.{self.details[1]}e'
+        elif self.kind == 'f':
+            return f'%{self.details[0] + self.details[1] + 1}.{self.details[1]}f'
+        else:
+            return f'%{self.details[0]}d'
 
 @dataclass
 class FormatItemList(Node):
@@ -450,7 +530,10 @@ class FormatItemList(Node):
             current_token = lex.next_token()
             items.append(FormatItem.parse(lex))
             current_token = lex.current_token()
-        return StatementList(items)
+        return FormatItemList(items)
+
+    def codegen(self, symbol_table):
+        return ''.join([item.codegen(symbol_table) for item in self.items])
 
 
 @dataclass
@@ -474,6 +557,9 @@ class RepeatedFormatGroup(Node):
         else:
             raise RuntimeError()
 
+    def codegen(self, symbol_table):
+        return self.items.codegen(symbol_table) * self.count.value
+
 
 @dataclass
 class RepeatedFormatItem(Node):
@@ -496,6 +582,12 @@ class RepeatedFormatItem(Node):
                     items.append(tail.items)
             return RepeatedFormatItem(items)
 
+    def codegen(self, symbol_table):
+        if isinstance(self.items, list):
+            return ''.join([item.codegen(symbol_table) for item in self.items])
+        else:
+            return self.items.codegen(symbol_table)
+
 
 @dataclass
 class FormatList(Node):
@@ -507,6 +599,20 @@ class FormatList(Node):
         items = RepeatedFormatItem.parse(lex)
         ccp_kw = lex.expect(lex.next_token(), lexer.Token(Domaintag.DomainTag.Rbracket, None))
         return FormatList(items)
+
+    def codegen(self, symbol_table):
+        if hasattr(self, "__cached_var"):
+            return self.__cached_var
+        else:
+            if hasattr(FormatList, "static_cnt"):
+                FormatList.static_cnt += 1
+            else:
+                FormatList.static_cnt = 1
+            value = self.items.codegen(symbol_table)
+            var = ir.GlobalVariable(symbol_table.module, ir.ArrayType(ir.IntType(32), len(value) + 1), f".str.{FormatList.static_cnt}")
+            var.initializer = ir.Constant(ir.ArrayType(ir.IntType(32), len(value) + 1), [ord(char) for char in value] + [0])
+            self.__cached_var = var
+            return self.__cached_var
 
 
 @dataclass
@@ -528,7 +634,12 @@ class FormatStatement(Statement):
         tuples.pop(0)
         return FormatStatement(label_op, format_list)
 
-    def check(self, labels):
+    def codegen(self, symbols_table):
+        if self.label:
+            symbols_table.builder = ir.IRBuilder(symbols_table.labels[self.label])
+
+    def check(self, symbol_table):
+        symbol_table.formats[self.label] = self.format_list
         return self
 
 
@@ -595,14 +706,27 @@ class DoStatement(Statement):
         lable_op = tuples[0][0]
         tuples.pop(0)
         nested_operators = NestedList.parse(tuples, do_label)
-        return DoStatement(lable_op, do_label, index, values, nested_operators)
+        return DoStatement(lable_op, do_label, Identifier(index.attrib), values, nested_operators)
+
+    def codegen(self, symbols_table):
+        if self.label:
+            symbols_table.builder = ir.IRBuilder(symbols_table.labels[self.label])
+
+        idx = symbols_table.func.basic_blocks.index(symbols_table.llvm.builder.block) + 1
+        cond_block = symbols_table.func.insert_basic_block(idx)
+        cond_block_builder = ir.IRBuilder(cond_block)
+        body_block = symbols_table.func.insert_basic_block(idx + 1)
+        body_block_builder = ir.IRBuilder(body_block)
+        inc_block = symbols_table.func.insert_basic_block(idx + 2)
+        inc_block_builder = ir.IRBuilder(inc_block)
+        end_block = symbols_table.func.insert_basic_block(idx + 3)
 
     def check(self, symbol_table):
         self.values = self.values.check(symbol_table)
         if isinstance(self.values.type, IntegerT):
-            symbol_table.add(self.index.attrib, IntegerT())
+            symbol_table.add(self.index.name, IntegerT())
         else:
-            symbol_table.add(self.index, FloatT())
+            symbol_table.add(self.index.name, FloatT())
         self.nested_operators = self.nested_operators.check(symbol_table)
         return self
 
@@ -656,8 +780,14 @@ class GotoStatement(Statement):
         tuples.pop(0)
         return GotoStatement(label_op, label)
 
-    def check(self, labels):
-        self.go_to_label.check(labels)
+    def codegen(self, symbols_table):
+        if self.label:
+            symbols_table.builder = ir.IRBuilder(symbols_table.labels[self.label])
+        symbols_table.builder.branch(symbols_table.labels[self.label])
+
+
+    def check(self, symbols_table):
+        self.go_to_label = self.go_to_label.check(symbols_table)
         return self
 
 
@@ -674,6 +804,10 @@ class ContinueStatement(Statement):
         tuples.pop(0)
         return ContinueStatement(label_op)
 
+    def codegen(self, symbols_table):
+        if self.label:
+            symbols_table.builder = ir.IRBuilder(symbols_table.labels[self.label])
+
     def check(self, labels):
         return self
 
@@ -681,9 +815,9 @@ class ContinueStatement(Statement):
 @dataclass
 class IfStatement(Statement):
     condition: ArithmeticExpression
-    true_label: Label
-    false_label: Label
-    next_label: Label
+    negative_label: Label
+    zero_label: Label
+    positive_label: Label
 
     @staticmethod
     def parse(tuples: list):
@@ -703,11 +837,23 @@ class IfStatement(Statement):
         tuples.pop(0)
         return IfStatement(label_op, expression, true_label, false_label, next_label)
 
+    def codegen(self, symbols_table):
+        if self.label:
+            symbols_table.builder = ir.IRBuilder(symbols_table.labels[self.label])
+        cond = self.condition.codegen(symbols_table)
+        cmp = symbols_table.builder.icmp_signed('<', cond, ir.Constant(ir.IntType(32), 0))
+        idx = symbols_table.func.basic_blocks.index(symbols_table.builder.block) + 1
+        cond_block = symbols_table.func.insert_basic_block(idx)
+        symbols_table.builder.cbranch(cmp, symbols_table.labels[self.negative_label.number.value], cond_block)
+        new_builder = ir.IRBuilder(cond_block)
+        cmp = new_builder.icmp_signed('==', cond, ir.Constant(ir.IntType(32), 0))
+        new_builder.cbranch(cmp, symbols_table.labels[self.zero_label.number.value], symbols_table.labels[self.positive_label.number.value])
+
     def check(self, symbol_table):
         self.condition = self.condition.check(symbol_table)
-        self.true_label = self.true_label.check(symbol_table)
-        self.false_label = self.false_label.check(symbol_table)
-        self.next_label = self.next_label.check(symbol_table)
+        self.negative_label = self.negative_label.check(symbol_table)
+        self.zero_label = self.zero_label.check(symbol_table)
+        self.positive_label = self.positive_label.check(symbol_table)
         return self
 
 
@@ -804,14 +950,26 @@ class Term(Node):
             current_token = lex.current_token()
         return result if result else exponential
 
+    def codegen(self, symbol_table):
+        mul = symbol_table.builder.mul if isinstance(self.type, IntegerT) else symbol_table.builder.fmul
+        div = symbol_table.builder.sdiv if isinstance(self.type, IntegerT) else symbol_table.builder.fdiv
+        if self.operator == '*':
+            return mul(self.left.codegen(symbol_table), self.right.codegen(symbol_table))
+        elif self.operator == '/':
+            return div(self.left.codegen(symbol_table), self.right.codegen(symbol_table))
+        else:
+            raise RuntimeError()
+
     def check(self, symbol_table):
         self.left = self.left.check(symbol_table)
         self.right = self.right.check(symbol_table)
         if isinstance(self.left.type, IntegerT) and isinstance(self.right.type, IntegerT):
             self.type = IntegerT()
-        elif self.left.type is None or self.right.type is None:
-            self.type = None
         else:
+            if isinstance(self.left.type, IntegerT):
+                self.left = FloatConversion(self.left).check(symbol_table)
+            else:
+                self.right = FloatConversion(self.right).check(symbol_table)
             self.type = FloatT()
         return self
 
@@ -901,6 +1059,11 @@ class Exponentiation(Node):
             rhs = Exponentiation.parse(lex)
             return Exponentiation(factor, rhs)
         return factor
+
+    def codegen(self, symbol_table):
+        exp = symbol_table.lookup_function('exp').llvmobj
+        return symbol_table.builder.call(exp, [self.base.codegen(symbol_table), self.exponent.codegen(symbol_table)])
+
 
     def check(self, symbol_table):
         self.base = self.base.check(symbol_table)

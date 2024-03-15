@@ -1,7 +1,9 @@
       PROGRAM DEMO
 
+      print 100
+
 100   FORMAT (I5)
-101   FORMAT (2F10.2)
+101   FORMAT (2(F10.2, F10.3))
 102   FORMAT (E10.3)
 103   FORMAT (10X, 5HHello, I6)
 

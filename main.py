@@ -7,6 +7,7 @@ if __name__ == "__main__":
     unique_labels, pair_lable_operator = make_lexer('test1.txt')
     tree, format_labels = Program.parse(pair_lable_operator)
     _, symbol_table = tree.check()
-    pprint(tree)
-    print("NICE")
+    print(tree.codegen())
+    # pprint(tree)
+    # print("NICE")
 

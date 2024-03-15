@@ -1,7 +1,32 @@
-      Program DEMo
-  
-10    c = d + 3
-20    d = 5 + 4
+      PROGRAM DEMO
 
 
-      end
+100   FORMAT (I5)
+101   FORMAT (2(F10.2, F10.3))
+102   FORMAT (E10.3)
+103   FORMAT (10X, 5HHello, I6)
+
+      if (10 - 2) 10, 20, 30
+      I = 5.0
+      J = 10
+      K = I * J
+10    CONTINUE
+
+      Ka5ra = 2.0
+      
+      Z = (Ka5ra + Y) / K
+
+
+
+20    GOTO 50
+30    CONTINUE
+40    Y = Y + 2.e-3
+
+
+
+      K = I + J
+      DOi5 = 2 + 3
+
+      a = 1 + (5 + 2)
+
+      END
